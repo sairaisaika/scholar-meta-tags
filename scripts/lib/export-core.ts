@@ -83,11 +83,12 @@ export function buildExport(input: ExportInput): ExportFiles {
   reconcileRows(rowEntries, input.policy)
 
   const works: EvidenceCommunityWork[] = []
-  const workIds = [...decisionsByWork.keys()].sort()
+  // 有裁决的作品 + 只有名片快照、还没人表态的作品（打样书架靠它们出现在导出里；标签 / 分面 / 行为空，模型建议从名片的主题与关键词来）
+  const workIds = [...new Set([...decisionsByWork.keys(), ...input.works.keys()])].sort()
   const presentTagsOf = new Map<string, string[]>()
   const unlisted = new Map<string, { facet: string; value: string; rows: number }>()
   for (const workId of workIds) {
-    const ds = decisionsByWork.get(workId)!
+    const ds = decisionsByWork.get(workId) ?? []
     const anns = byWork.get(workId) ?? []
     const snap = input.works.get(workId) ?? [...input.works.values()].find((w) => w.aliases.includes(workId)) ?? null
     const tags: EvidenceWorkTag[] = []
@@ -130,7 +131,7 @@ export function buildExport(input: ExportInput): ExportFiles {
       if (!prev || later(a, prev)) latestReview.set(k, a)
     }
     const unsure = [...latestReview.values()].filter((a) => a.op === 'unsure').length
-    const updated_at = anns.map((a) => a.at).sort().at(-1) ?? ''
+    const updated_at = anns.map((a) => a.at).sort().at(-1) ?? snap?.snapshot_at ?? ''
     const aliases = snap ? [...new Set([snap.work_id, ...snap.aliases])].filter((k) => k !== workId).sort() : []
     tags.sort((a, b) => (a.tag_key < b.tag_key ? -1 : 1))
     pending.sort((a, b) => (a.subject < b.subject ? -1 : 1))
