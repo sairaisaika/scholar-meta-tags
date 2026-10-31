@@ -1,0 +1,12 @@
+{
+  "_comment": "冷启动书架：每个 OpenAlex 主题取被引最高 take 篇 + 近两年 recent 篇（sample 工作流在 CI 里取；只写名片与模型建议，研究设计 / 方向 / 数字必须有人抄）。主题 id 到 openalex.org 上查实了再加；这里只放已核实的。",
+  "filters": "has_doi:true,is_retracted:false",
+  "topics": [
+    {
+      "id": "openalex:T10537",
+      "name": "Attention Deficit Hyperactivity Disorder",
+      "take": 25,
+      "recent": 10
+    }
+  ]
+}

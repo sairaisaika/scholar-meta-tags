@@ -1,0 +1,19 @@
+{
+    "_comment": "\u7ef4\u62a4\u8005\u7ef4\u62a4\u7684\u6807\u7b7e\u522b\u540d\uff08\u663e\u793a\u4e0e\u5efa\u8bae\u7528\uff0c\u4e0d\u6539\u5f52\u4e00\uff09\u3002tag_key \u2192 \u663e\u793a\u540d\u4e0e\u522b\u540d\u3002",
+    "tags": {
+        "cbt i": {
+            "label": "CBT-I",
+            "aliases": [
+                "CBTi",
+                "cognitive behavioural therapy for insomnia"
+            ]
+        },
+        "adhd": {
+            "label": "ADHD",
+            "aliases": [
+                "attention deficit hyperactivity disorder",
+                "\u6ce8\u610f\u7f3a\u9677\u591a\u52a8\u969c\u788d"
+            ]
+        }
+    }
+}

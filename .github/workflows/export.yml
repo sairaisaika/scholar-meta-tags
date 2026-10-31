@@ -1,0 +1,75 @@
+name: export
+
+# 派生导出 + 静态页：读全部断言 → 裁决 → 名片与 accepted 行 → 分面表 → export/v1/*；与 site/ 一起发成一个 Pages 工件。
+# 派生物不提交回 main。Pages 没开（Settings → Pages → Source 选 GitHub Actions）时只构建、不部署。
+on:
+  workflow_call:
+  schedule:
+    - cron: '7 * * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'vocab/**'
+      - 'config/**'
+      - 'site/**'
+      - 'scripts/**'
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: smt-export
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      enabled: ${{ steps.pages.outputs.enabled }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm export
+      - run: pnpm site:build
+      - name: 导出能被引擎读回（零问题）
+        run: pnpm check --export site/dist/export/v1
+      - id: pages
+        name: Pages 的来源是不是 GitHub Actions
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          build_type=$(gh api "repos/${GITHUB_REPOSITORY}/pages" --jq .build_type 2>/dev/null || true)
+          if [ "$build_type" = "workflow" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::GitHub Pages 还没打开，或来源不是 GitHub Actions（Settings → Pages → Source 选 GitHub Actions）。这次只构建、不部署。"
+          fi
+      - if: steps.pages.outputs.enabled == 'true'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: site/dist
+      - name: 每日导出资产（UTC 03:xx 的那次运行，或手动）
+        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'schedule' && startsWith(github.event.schedule, '7 3 '))
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: bash scripts/release-export.sh site/dist/export/v1
+  deploy:
+    needs: build
+    if: needs.build.outputs.enabled == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

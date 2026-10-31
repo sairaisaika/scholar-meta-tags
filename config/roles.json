@@ -1,0 +1,4 @@
+{
+  "_comment": "只能升级不能降级：gh:<数字 id> → editor | maintainer。仓库权限 admin / maintain → maintainer、write → editor 已自动映射，这里只放额外授予的人。",
+  "roles": {}
+}

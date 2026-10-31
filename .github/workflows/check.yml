@@ -1,0 +1,35 @@
+name: check
+
+# 结构闸：词表（id 唯一、broader 无环且 ≤ 3、design 等于引擎常量、孤儿概念）、JSONL 每行可解析、无邮箱、文件 < 50 MB、
+# 名片无摘要、导出能被 readCommunityExport 零问题读回、脚本测试与类型；私有词闸复用引擎仓的脚本。
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm check
+      - run: pnpm export && pnpm check --export export/v1
+      - name: 私有词闸（词表存成 secret PRIVATE_TERMS，隐去模式只印处数）
+        env:
+          PRIVATE_TERMS: ${{ secrets.PRIVATE_TERMS }}
+          PRIVATE_TERMS_REDACT: '1'
+        run: |
+          if [ -z "$PRIVATE_TERMS" ]; then echo "ℹ️ 没有私有词表，跳过"; exit 0; fi
+          printf '%s\n' "$PRIVATE_TERMS" > "$RUNNER_TEMP/private-terms"
+          PRIVATE_TERMS_FILE="$RUNNER_TEMP/private-terms" bash scripts/check-private-terms.sh

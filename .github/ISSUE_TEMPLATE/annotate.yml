@@ -1,0 +1,40 @@
+name: 标注一篇论文 / Annotate a paper
+description: 由标注页面预填。给一篇公开论文打标签、说明它是什么研究、从原文抄一行数字，或对已有标注投认可 / 不认可。
+title: "[annotate] "
+labels: [annotation]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        提交即表示你以 **CC0 1.0** 释出这些**事实性标注**（标签、分面、数值与出处位置；不含你引用的原文文字）。你的 GitHub 登录名会随这条 issue 公开。
+        By submitting you release these **factual annotations** under **CC0 1.0** (tags, facets, numbers and their locations; not quoted text). Your GitHub login is public with this issue.
+  - type: input
+    id: work
+    attributes:
+      label: 论文 / Work
+      description: 作品键：doi:10.…、openalex:W…、pmid:…
+      placeholder: "doi:10.1016/j.jad.2020.01.001"
+    validations:
+      required: true
+  - type: textarea
+    id: summary
+    attributes:
+      label: 我说了什么（人话，给审阅者看）/ What I'm saying (plain words)
+      placeholder: "ADHD · RCT（Abstract-Methods）· 主结局 ADHD-RS 8 周：SMD −0.42 [−0.71, −0.13], n=212（Table 2 · row 1）"
+  - type: textarea
+    id: payload
+    attributes:
+      label: 机器读的部分（请勿手改）/ Machine-readable part (do not edit)
+      description: 由页面生成的 JSON：{"form":"annotate/1","work_id":"…","items":[…]}
+      render: json
+    validations:
+      required: true
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: 确认 / Confirm
+      options:
+        - label: 我读过这篇论文的相关部分；数字来自原文并写了出处 / I read the relevant parts; numbers come from the paper and I gave their location
+          required: true
+        - label: 我同意以 CC0 1.0 释出这些标注事实 / I release these annotation facts under CC0 1.0
+          required: true

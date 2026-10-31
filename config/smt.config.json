@@ -1,0 +1,10 @@
+{
+  "_comment": "裁决与防滥用参数。改这里走 PR；导出时随 manifest.policy 下发，宿主据此复算。",
+  "quorum": { "tier": "contributor", "threshold": 0.5, "confidence": 0.8, "min_independent": 2, "min_disputers": 2 },
+  "row": { "require_re_extraction": true, "tolerance": { "relative": 0.005, "absolute": 0.005 } },
+  "min_tier": { "binding": "editor", "independence": "editor", "appraisal": "editor" },
+  "model_min_confidence": 0.5,
+  "abuse": { "min_account_age_days": 7, "daily_issue_limit": 20, "daily_assertion_limit": 200, "max_assertions_per_issue": 60, "max_rows_per_work": 20, "max_quote_chars": 300 },
+  "queue": { "stale_days": 30 },
+  "export": { "label": "Community annotations (scholar-meta-tags)", "shard_bits": 8 }
+}

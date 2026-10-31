@@ -1,0 +1,54 @@
+name: intake
+
+# issue 入库：只认表单 payload 与评论命令；鉴权按仓库权限现算层级；校验 → 追加 JSONL → 回评 → 关闭。
+# 每次运行扫全部待处理 issue（并发组里排队的运行会被新来的取消，所以不能只处理触发它的那一条）；每 15 分钟兜底。
+# 由 GITHUB_TOKEN 推的 push 不触发别的工作流 ⇒ 导出作为同一工作流的后续作业。
+on:
+  issues:
+    types: [opened, edited, labeled]
+  issue_comment:
+    types: [created]
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: smt-intake
+  cancel-in-progress: false
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.ingest.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - id: ingest
+        name: 扫全部待处理 issue 并入库
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          OPENALEX_API_KEY: ${{ secrets.OPENALEX_API_KEY }}
+          TRIGGER_ISSUE: ${{ github.event.issue.number }}
+          TRIGGER_COMMENT: ${{ github.event.comment.id }}
+        run: pnpm intake
+  export:
+    needs: ingest
+    if: needs.ingest.outputs.changed == 'true'
+    uses: ./.github/workflows/export.yml
+    permissions:
+      contents: write
+      pages: write
+      id-token: write

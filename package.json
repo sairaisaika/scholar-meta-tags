@@ -1,0 +1,34 @@
+{
+  "name": "scholar-meta-tags",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Public, auditable annotation platform for research papers: the GitHub repository is the database; rules and shapes come from the scholar-meta engine.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@10.33.0",
+  "scripts": {
+    "intake": "tsx scripts/intake.ts",
+    "export": "tsx scripts/export.ts",
+    "sample": "tsx scripts/sample.ts",
+    "replay": "tsx scripts/replay.ts",
+    "check": "tsx scripts/check.ts",
+    "redact": "tsx scripts/redact.ts",
+    "test": "node --import tsx --test scripts/*.test.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "site:build": "tsx site/build.ts",
+    "site:dev": "tsx site/build.ts --watch"
+  },
+  "dependencies": {
+    "scholar-meta": "https://github.com/sairaisaika/scholar-meta-visulization/releases/download/v0.6.0/scholar-meta-0.6.0.tgz",
+    "pdfjs-dist": "^4.10.38"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "esbuild": "^0.25.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5"
+  }
+}

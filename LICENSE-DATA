@@ -1,0 +1,22 @@
+Data license: CC0 1.0 Universal (CC0 1.0) Public Domain Dedication
+https://creativecommons.org/publicdomain/zero/1.0/legalcode
+
+Scope / 范围
+------------
+The CC0 dedication covers the *annotation facts* stored under data/ and published in the export:
+tags, facet values, numbers transcribed from papers together with their location in the paper,
+decision states and vote counts, and bibliographic snapshots that originate from OpenAlex (itself CC0).
+
+CC0 覆盖 data/ 下与导出里的**标注事实**：标签、分面取值、从论文抄录的数值及其在原文中的位置、裁决状态与票数，
+以及来自 OpenAlex（本身即 CC0）的书目快照。
+
+Not covered / 不覆盖
+--------------------
+- Quoted passages from papers: they stay in the GitHub issue that proposed them and never enter data/ or the export;
+  the export only carries a locator (table / page / section).
+- Abstracts: never stored and never exported (the export reader rejects non-null abstracts).
+- The code in this repository, which is licensed under the MIT License (see LICENSE).
+
+- 论文原文引文：只留在提出它的 issue 里，不进 data/ 与导出；导出只带 locator（表格 / 页码 / 章节）。
+- 摘要：不落盘、不导出（读取方拒收非空摘要）。
+- 本仓库的代码：MIT 许可（见 LICENSE）。

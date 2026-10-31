@@ -1,0 +1,79 @@
+{
+  "_comment": "封闭分面词表。design 的取值必须与引擎常量 EVIDENCE_STUDY_DESIGNS 完全相同（CI 核对）；其余分面 ≤ 8 个值 + unsure，加值走 PR 并写 maps_to。",
+  "facets": {
+    "design": {
+      "label": {
+        "zh": "研究设计",
+        "en": "Study design"
+      },
+      "values": [
+        "rct",
+        "non_randomised_controlled",
+        "cohort",
+        "case_control",
+        "cross_sectional",
+        "case_series",
+        "qualitative",
+        "mixed_methods",
+        "systematic_review",
+        "meta_analysis",
+        "narrative_review",
+        "other"
+      ],
+      "maps_to": "study_type",
+      "locator_required": true
+    },
+    "population_age": {
+      "label": {
+        "zh": "人群年龄",
+        "en": "Population age"
+      },
+      "values": [
+        "children",
+        "adolescents",
+        "adults",
+        "older_adults",
+        "mixed",
+        "not_applicable",
+        "unsure"
+      ],
+      "maps_to": null,
+      "locator_required": false
+    },
+    "setting": {
+      "label": {
+        "zh": "场景",
+        "en": "Setting"
+      },
+      "values": [
+        "clinical",
+        "community",
+        "school",
+        "workplace",
+        "online",
+        "mixed",
+        "not_applicable",
+        "unsure"
+      ],
+      "maps_to": null,
+      "locator_required": false
+    },
+    "comparator_kind": {
+      "label": {
+        "zh": "对照类型",
+        "en": "Comparator type"
+      },
+      "values": [
+        "placebo_or_sham",
+        "waitlist_or_no_treatment",
+        "usual_care",
+        "active_comparator",
+        "none",
+        "not_applicable",
+        "unsure"
+      ],
+      "maps_to": null,
+      "locator_required": false
+    }
+  }
+}

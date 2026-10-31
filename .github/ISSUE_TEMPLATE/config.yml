@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 标注页面 / Annotation page
+    url: https://sairaisaika.github.io/scholar-meta-tags/
+    about: 从这里贴 DOI、链接或标题，页面会预填表单。
+  - name: 规则与设计 / Rules and design
+    url: https://github.com/sairaisaika/scholar-meta-visulization/blob/main/docs/wiki/Community-annotation.md
+    about: 裁决规则、参数、许可与隐私。

@@ -1,0 +1,38 @@
+name: sample
+
+# 冷启动书架：按 config/seeds.json 取每个主题被引最高 N 篇 + 近两年 M 篇（在 CI 里问 OpenAlex；开发容器内外网不可达不影响）。
+# 名片经 publicWorkCard 置空摘要后写 data/works/；每篇写一条模型层的主题 / 关键词建议断言；以 PR 提交让维护者看一眼。
+on:
+  schedule:
+    - cron: '0 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: smt-sample
+  cancel-in-progress: false
+
+jobs:
+  sample:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm sample
+        env:
+          OPENALEX_API_KEY: ${{ secrets.OPENALEX_API_KEY }}
+      - uses: peter-evans/create-pull-request@v7
+        with:
+          branch: sample/refresh
+          title: 'sample: refresh the starter shelf'
+          commit-message: 'sample: refresh the starter shelf'
+          body: '由 sample 工作流生成：名片快照（无摘要）与模型层建议断言。合并前看一眼主题是否仍合适。'
+          labels: sample

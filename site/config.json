@@ -1,0 +1,9 @@
+{
+  "_comment": "静态页的配置：issue 开到哪个仓、导出相对路径（相对 site/dist）、OpenAlex 地址（只在用户主动点查询时直连，不带 key）。",
+  "owner": "sairaisaika",
+  "repo": "scholar-meta-tags",
+  "exportPath": "export/v1",
+  "issueTemplate": "annotate.yml",
+  "maxIssueUrlBytes": 7168,
+  "openalex": { "baseUrl": "https://api.openalex.org" }
+}
