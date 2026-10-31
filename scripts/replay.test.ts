@@ -33,7 +33,7 @@ test('重放：与已发布导出一致 ⇒ 无差异；分片改了 ⇒ 报；m
   const created = gh.log.find((l) => l.op === 'createIssue')!.args as { labels: string[]; body: string }
   assert.deepEqual(created.labels, ['replay'])
   assert.match(created.body, /不一致/)
-  assert.equal(comparableManifest(JSON.stringify({ a: 1, generated_at: 'x', source_commit: 'y' })), comparableManifest(JSON.stringify({ a: 1, generated_at: 'z', source_commit: null })))
+  assert.equal(comparableManifest(JSON.stringify({ a: 1, generated_at: 'x', source_commit: 'y', repository: 'r1', maintainers: ['m'] })), comparableManifest(JSON.stringify({ a: 1, generated_at: 'z', source_commit: null, repository: '', maintainers: [] })))
   // 远端（Pages）读取用注入的 fetch；缺文件算差异
   const viaFetch = await runReplay({ root, pagesUrl: 'https://example.invalid/export/v1', fetch: async () => new Response('', { status: 404 }), log: () => {} })
   assert.ok(viaFetch.diffs.length > 0 && viaFetch.diffs.every((d) => d.remote === null))

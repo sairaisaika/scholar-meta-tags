@@ -1,6 +1,6 @@
 /**
  * 重放：全部断言从头重跑导出到临时目录，与 Pages 上的（或 `--against <dir>`）逐文件比对 sha256；
- * `manifest.json` 只比 `generated_at` / `source_commit` 以外的部分（这两项每次都不同），`queues.json` 不比按时刻算的 `stale_pending`。不一致 ⇒ 用 GitHub API 开 issue（标签 `replay`）。
+ * `manifest.json` 只比 `generated_at` / `source_commit` / `repository` / `maintainers` 以外的部分（前两项每次不同，后两项取自运行环境），`queues.json` 不比按时刻算的 `stale_pending`。不一致 ⇒ 用 GitHub API 开 issue（标签 `replay`）。
  * 另算「互相认可比例异常」：两账号互相 endorse 对方提出的 subject ≥ 5 次，且各占自己全部认可的 ≥ 80%，写进输出（`replay.json` 与 issue）。
  * 用法：`pnpm replay [--against <dir>] [--pages <url>] [--root <dir>] [--no-issue]`；环境 `GH_TOKEN`、`GH_REPO`。
  */
@@ -16,11 +16,13 @@ import { argValue, runExport } from './export.js'
 
 export interface FileDiff { path: string; local: string | null; remote: string | null }
 
-/** manifest 去掉每次都不同的两项再比 */
+/** manifest 去掉与内容无关、每次或每个环境都可能不同的几项再比：生成时间、提交、仓库地址与维护者名单（后两项来自运行环境） */
 export function comparableManifest(text: string): string {
   const m = JSON.parse(text) as Record<string, unknown>
   delete m.generated_at
   delete m.source_commit
+  delete m.repository
+  delete m.maintainers
   return JSON.stringify(m)
 }
 
