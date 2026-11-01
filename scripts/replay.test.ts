@@ -34,8 +34,14 @@ test('重放：与已发布导出一致 ⇒ 无差异；分片改了 ⇒ 报；m
   assert.deepEqual(created.labels, ['replay'])
   assert.match(created.body, /不一致/)
   assert.equal(comparableManifest(JSON.stringify({ a: 1, generated_at: 'x', source_commit: 'y', repository: 'r1', maintainers: ['m'] })), comparableManifest(JSON.stringify({ a: 1, generated_at: 'z', source_commit: null, repository: '', maintainers: [] })))
-  // 远端（Pages）读取用注入的 fetch；缺文件算差异
-  const viaFetch = await runReplay({ root, pagesUrl: 'https://example.invalid/export/v1', fetch: async () => new Response('', { status: 404 }), log: () => {} })
+  // 远端（Pages）读取用注入的 fetch；manifest 整个拉不到 ⇒ 不比对、不开 issue（没问成 ≠ 不一致）
+  const gh2 = fakeGitHub({ issues: [], users: [] })
+  const down = await runReplay({ root, pagesUrl: 'https://example.invalid/export/v1', fetch: async () => new Response('', { status: 404 }), github: gh2.gh, log: () => {} })
+  assert.deepEqual([down.unreachable, down.diffs, down.issue], [true, [], null])
+  assert.ok(!gh2.log.some((l) => l.op === 'createIssue'))
+  // manifest 在、某个分片缺 ⇒ 缺文件算差异
+  const viaFetch = await runReplay({ root, pagesUrl: 'https://example.invalid/export/v1', fetch: async (input) => (String(input).endsWith('/manifest.json') ? new Response(readFileSync(join(published.outDir, 'manifest.json'), 'utf8'), { status: 200 }) : new Response('', { status: 404 })), log: () => {} })
+  assert.equal(viaFetch.unreachable, false)
   assert.ok(viaFetch.diffs.length > 0 && viaFetch.diffs.every((d) => d.remote === null))
 })
 

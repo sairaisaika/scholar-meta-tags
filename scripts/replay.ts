@@ -1,6 +1,6 @@
 /**
  * 重放：全部断言从头重跑导出到临时目录，与 Pages 上的（或 `--against <dir>`）逐文件比对 sha256；
- * `manifest.json` 只比 `generated_at` / `source_commit` / `repository` / `maintainers` 以外的部分（前两项每次不同，后两项取自运行环境），`queues.json` 不比按时刻算的 `stale_pending`。不一致 ⇒ 用 GitHub API 开 issue（标签 `replay`）。
+ * `manifest.json` 只比 `generated_at` / `source_commit` / `repository` / `maintainers` 以外的部分（前两项每次不同，后两项取自运行环境），`queues.json` 不比按时刻算的 `stale_pending`。不一致 ⇒ 用 GitHub API 开 issue（标签 `replay`）；远端 `manifest.json` 整个拉不到 ⇒ 这次不比对、不开 issue、退出码 0。
  * 另算「互相认可比例异常」：两账号互相 endorse 对方提出的 subject ≥ 5 次，且各占自己全部认可的 ≥ 80%，写进输出（`replay.json` 与 issue）。
  * 用法：`pnpm replay [--against <dir>] [--pages <url>] [--root <dir>] [--no-issue]`；环境 `GH_TOKEN`、`GH_REPO`。
  */
@@ -92,7 +92,7 @@ export interface ReplayDeps {
   log?: (s: string) => void
 }
 
-export async function runReplay(deps: ReplayDeps = {}): Promise<{ diffs: FileDiff[]; mutual: MutualPair[]; issue: number | null; outDir: string }> {
+export async function runReplay(deps: ReplayDeps = {}): Promise<{ diffs: FileDiff[]; mutual: MutualPair[]; issue: number | null; outDir: string; unreachable: boolean }> {
   const root = deps.root ?? REPO_ROOT
   const log = deps.log ?? ((s: string) => console.log(s))
   const outDir = mkdtempSync(join(tmpdir(), 'smt-replay-'))
@@ -107,9 +107,12 @@ export async function runReplay(deps: ReplayDeps = {}): Promise<{ diffs: FileDif
     const f = deps.fetch ?? fetch
     remote = async (path) => { try { const r = await f(`${base}/${path}`); return r.ok ? await r.text() : null } catch { return null } }
   }
-  const diffs = remote ? await diffExports(outDir, remote) : []
+  // 远端的 manifest.json 整个拉不到（还没发布过、Pages 没开、网络失败）⇒ 「没问成」不是「不一致」：这次不比对、不开 issue
+  const unreachable = remote !== null && (await remote('manifest.json')) === null
+  if (unreachable) log('⚠️ 已发布导出拉不到（manifest.json 缺失或网络失败）：这次不比对（外部源失败 ≠ 不一致）')
+  const diffs = remote && !unreachable ? await diffExports(outDir, remote) : []
   const mutual = mutualEndorsements(loadAssertions(root).assertions)
-  const report = { replayed_at: new Date().toISOString(), works: files.manifest.counts.works, diffs, mutual_endorsements: mutual }
+  const report = { replayed_at: new Date().toISOString(), works: files.manifest.counts.works, unreachable, diffs, mutual_endorsements: mutual }
   writeFileSync(join(outDir, 'replay.json'), `${JSON.stringify(report, null, 2)}\n`, 'utf8')
   log(JSON.stringify(report, null, 2))
   let issue: number | null = null
@@ -121,7 +124,7 @@ export async function runReplay(deps: ReplayDeps = {}): Promise<{ diffs: FileDif
     ].filter(Boolean).join('\n\n')
     issue = await deps.github.createIssue({ title: `replay: ${diffs.length} file(s) differ, ${mutual.length} mutual pair(s)`, body, labels: ['replay'] })
   }
-  return { diffs, mutual, issue, outDir }
+  return { diffs, mutual, issue, outDir, unreachable }
 }
 
 export async function main(argv: string[] = process.argv.slice(2), env: NodeJS.ProcessEnv = process.env): Promise<number> {
@@ -132,7 +135,7 @@ export async function main(argv: string[] = process.argv.slice(2), env: NodeJS.P
   const github = argv.includes('--no-issue') || !repo || !token ? null : createGitHub({ token, repo })
   const r = await runReplay({ ...(against ? { against } : {}), pagesUrl: against ? null : pages, github })
   if (r.diffs.length > 0) { console.error(`❌ ${r.diffs.length} 个文件与已发布导出不一致${r.issue ? `（已开 issue #${r.issue}）` : ''}`); return 1 }
-  console.log(`✅ 重放一致；互相认可异常 ${r.mutual.length} 对`)
+  console.log(r.unreachable ? `ℹ️ 已发布导出拉不到，这次只重放不比对；互相认可异常 ${r.mutual.length} 对` : `✅ 重放一致；互相认可异常 ${r.mutual.length} 对`)
   return 0
 }
 
