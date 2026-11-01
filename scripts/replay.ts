@@ -14,6 +14,10 @@ import type { GitHub } from './lib/github.js'
 import { REPO_ROOT, listFiles, loadAssertions, sha256 } from './lib/store.js'
 import { argValue, runExport } from './export.js'
 
+/** 远端单个文件最多读几次、首个间隔多少毫秒（之后线性加长） */
+export const REMOTE_ATTEMPTS = 3
+export const REMOTE_RETRY_MS = 3000
+
 export interface FileDiff { path: string; local: string | null; remote: string | null }
 
 /** manifest 去掉与内容无关、每次或每个环境都可能不同的几项再比：生成时间、提交、仓库地址与维护者名单（后两项来自运行环境） */
@@ -88,6 +92,8 @@ export interface ReplayDeps {
   against?: string
   pagesUrl?: string | null
   fetch?: typeof fetch
+  /** 重试间隔的等待函数（测试注入） */
+  sleep?: (ms: number) => Promise<void>
   github?: GitHub | null
   log?: (s: string) => void
 }
@@ -105,7 +111,16 @@ export async function runReplay(deps: ReplayDeps = {}): Promise<{ diffs: FileDif
   } else if (deps.pagesUrl) {
     const base = deps.pagesUrl.replace(/\/+$/, '')
     const f = deps.fetch ?? fetch
-    remote = async (path) => { try { const r = await f(`${base}/${path}`); return r.ok ? await r.text() : null } catch { return null } }
+    // 刚部署完的 CDN 传播窗口里个别文件会短暂 404：缺失或网络失败时隔几秒再试，最多三次
+    const once = async (path: string) => { try { const r = await f(`${base}/${path}`); return r.ok ? await r.text() : null } catch { return null } }
+    const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((ok) => setTimeout(ok, ms)))
+    remote = async (path) => {
+      for (let attempt = 0; ; attempt++) {
+        const text = await once(path)
+        if (text !== null || attempt >= REMOTE_ATTEMPTS - 1) return text
+        await sleep(REMOTE_RETRY_MS * (attempt + 1))
+      }
+    }
   }
   // 远端的 manifest.json 整个拉不到（还没发布过、Pages 没开、网络失败）⇒ 「没问成」不是「不一致」：这次不比对、不开 issue
   const unreachable = remote !== null && (await remote('manifest.json')) === null

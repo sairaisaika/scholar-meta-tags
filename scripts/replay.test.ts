@@ -11,7 +11,7 @@ import type { Actor } from './lib/intake-core.js'
 import { appendJsonl, loadConfig, loadVocab, monthFile } from './lib/store.js'
 import { W, fakeGitHub, makeTempRepo } from './lib/test-fixtures.js'
 import { runExport } from './export.js'
-import { comparableManifest, mutualEndorsements, runReplay } from './replay.js'
+import { REMOTE_ATTEMPTS, comparableManifest, mutualEndorsements, runReplay } from './replay.js'
 
 test('重放：与已发布导出一致 ⇒ 无差异；分片改了 ⇒ 报；manifest 只比内容', async () => {
   const root = makeTempRepo()
@@ -40,9 +40,17 @@ test('重放：与已发布导出一致 ⇒ 无差异；分片改了 ⇒ 报；m
   assert.deepEqual([down.unreachable, down.diffs, down.issue], [true, [], null])
   assert.ok(!gh2.log.some((l) => l.op === 'createIssue'))
   // manifest 在、某个分片缺 ⇒ 缺文件算差异
-  const viaFetch = await runReplay({ root, pagesUrl: 'https://example.invalid/export/v1', fetch: async (input) => (String(input).endsWith('/manifest.json') ? new Response(readFileSync(join(published.outDir, 'manifest.json'), 'utf8'), { status: 200 }) : new Response('', { status: 404 })), log: () => {} })
+  const hits = new Map<string, number>()
+  const serve = async (input: RequestInfo | URL) => { const u = String(input); hits.set(u, (hits.get(u) ?? 0) + 1); return u.endsWith('/manifest.json') ? new Response(readFileSync(join(published.outDir, 'manifest.json'), 'utf8'), { status: 200 }) : new Response('', { status: 404 }) }
+  const viaFetch = await runReplay({ root, pagesUrl: 'https://example.invalid/export/v1', fetch: serve, sleep: async () => {}, log: () => {} })
   assert.equal(viaFetch.unreachable, false)
   assert.ok(viaFetch.diffs.length > 0 && viaFetch.diffs.every((d) => d.remote === null))
+  assert.equal(hits.get(`https://example.invalid/export/v1/${shard}`), REMOTE_ATTEMPTS) // 缺失的文件重试过
+  // 第二次才拿到 ⇒ 不算差异（CDN 传播窗口）
+  let n = 0
+  const flaky = async (input: RequestInfo | URL) => { const u = String(input); const rel = u.slice('https://example.invalid/export/v1/'.length); if (rel === shard && n++ === 0) return new Response('', { status: 404 }); return new Response(readFileSync(join(published.outDir, rel), 'utf8'), { status: 200 }) }
+  const healed = await runReplay({ root, pagesUrl: 'https://example.invalid/export/v1', fetch: flaky, sleep: async () => {}, log: () => {} })
+  assert.deepEqual(healed.diffs.map((d) => d.path), [shard]) // 之前被改坏的那个分片仍然不一致；别的都一致
 })
 
 test('互相认可：两账号互相认可对方 ≥ 5 次且占各自认可 ≥ 80% 才算；每人每对象只算最新一次', () => {
