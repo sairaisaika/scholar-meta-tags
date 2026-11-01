@@ -25,7 +25,7 @@ test('sampleOf：作品键优先 DOI；摘要置空；主主题一条 + 关键�
   assert.equal(sampleOf({ ...card, doi: null, id: null }, { id: 'x', name: 'x' }, '', ''), null)
 })
 
-test('runSample：写名片与断言、更新 sample.json；重跑不重复；无网不改文件', async () => {
+test('runSample：写名片与断言、更新 sample.json；重跑不重复、不改时间戳；无网不改文件', async () => {
   const root = makeTempRepo()
   const second = { ...card, id: 'openalex:W2', doi: '10.1000/second', pmid: null, title: 'Second', topics: [], keywords: ['Sleep'] }
   const oa = fakeOpenAlex('found', [{ ...card, abstract: 'leak' }, second])
@@ -40,8 +40,9 @@ test('runSample：写名片与断言、更新 sample.json；重跑不重复；�
   const sample = JSON.parse(readFileSync(join(root, 'data', 'sample.json'), 'utf8'))
   assert.deepEqual(sample.topics[0].works, ['doi:10.1016/j.jad.2020.01.001', 'doi:10.1000/second'])
   const again = await runSample({ root, openalex: oa, now: () => new Date('2026-11-01T00:00:00Z'), log: () => {} })
-  assert.deepEqual([again.works, again.assertions], [0, 0])
+  assert.deepEqual([again.works, again.assertions, again.unchanged], [0, 0, true])
   assert.equal(loadAssertions(root).assertions.length, 3)
+  assert.equal(JSON.parse(readFileSync(join(root, 'data', 'sample.json'), 'utf8')).generated_at, '2026-10-31T00:00:00.000Z') // 书架没变 ⇒ 不改时间戳
   const logs: string[] = []
   const off = await runSample({ root, openalex: fakeOpenAlex('error', null), log: (s) => logs.push(s) })
   assert.equal(off.offline, true)

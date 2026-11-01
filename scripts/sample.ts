@@ -1,9 +1,10 @@
 /**
  * 冷启动书架：按 `config/seeds.json` 每主题两次列表请求（被引最高 take 篇；近两年 recent 篇），每条经引擎 `workCardOf` → `publicWorkCard`
  * 写 `data/works/`；每篇写模型层建议断言（`openalex-primary-topic`：主主题名作标签；`smt-vocab-keywords`：每个关键词一条，最多 5 条），
- * 更新 `data/sample.json`。模型断言永不计票（只作页面「建议」）。无网（fetch 失败）⇒ 打印提示、退出码 0。
+ * 更新 `data/sample.json`（书架没变就不改）。模型断言永不计票（只作页面「建议」）。无网（fetch 失败）⇒ 打印提示、退出码 0。
  * 用法：`pnpm sample [--root <dir>]`；环境 `OPENALEX_API_KEY`（可选）。
  */
+import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { normalizeTag } from 'scholar-meta'
@@ -45,7 +46,7 @@ export function sampleOf(card: EvidenceWorkCard, topic: { id: string; name: stri
 
 export interface SampleDeps { root?: string; openalex: OpenAlex; now?: () => Date; log?: (s: string) => void }
 
-export async function runSample(deps: SampleDeps): Promise<{ offline: boolean; works: number; assertions: number }> {
+export async function runSample(deps: SampleDeps): Promise<{ offline: boolean; works: number; assertions: number; unchanged?: boolean }> {
   const root = deps.root ?? REPO_ROOT
   const log = deps.log ?? ((s: string) => console.log(s))
   const now = (deps.now ?? (() => new Date()))()
@@ -80,9 +81,12 @@ export async function runSample(deps: SampleDeps): Promise<{ offline: boolean; w
     }
     sample.topics.push({ id: topic.id, name: topic.name, works: keys })
   }
-  writeJson(paths(root).sample, { _comment: '打样书架：由 sample 工作流生成（种子主题 → 作品键列表）。', ...sample })
-  log(`样本：新增 ${added} 张名片、${newAssertions} 条模型建议断言，${sample.topics.length} 个主题`)
-  return { offline: false, works: added, assertions: newAssertions }
+  // 书架没变（名片、断言、主题列表都与上次相同）就不改 sample.json，免得每周只为时间戳开一个 PR
+  const previous = existsSync(paths(root).sample) ? readJson<{ topics?: unknown }>(paths(root).sample) : null
+  const unchanged = added === 0 && newAssertions === 0 && previous !== null && JSON.stringify(previous.topics) === JSON.stringify(sample.topics)
+  if (!unchanged) writeJson(paths(root).sample, { _comment: '打样书架：由 sample 工作流生成（种子主题 → 作品键列表）。', ...sample })
+  log(unchanged ? `样本：书架没变，不改任何文件（${sample.topics.length} 个主题）` : `样本：新增 ${added} 张名片、${newAssertions} 条模型建议断言，${sample.topics.length} 个主题`)
+  return { offline: false, works: added, assertions: newAssertions, unchanged }
 }
 
 export async function main(argv: string[] = process.argv.slice(2), env: NodeJS.ProcessEnv = process.env): Promise<number> {
