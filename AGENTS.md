@@ -3,6 +3,9 @@
 The shared engineering wiki lives in SMV: [engineering entry](../scholar-meta-visulization/docs/wiki/Engineering-entry.md) ·
 online https://github.com/sairaisaika/scholar-meta-visulization/blob/main/docs/wiki/Engineering-entry.md. Start from the route
 `community-annotation` ([Tagging-model](../scholar-meta-visulization/docs/wiki/Tagging-model.md), [Community-annotation](../scholar-meta-visulization/docs/wiki/Community-annotation.md)).
+Project status for both repositories, including this one, is kept in the same wiki:
+[Project-status](../scholar-meta-visulization/docs/wiki/Project-status.md) · [TODO](../scholar-meta-visulization/docs/wiki/TODO.md)
+(online: https://github.com/sairaisaika/scholar-meta-visulization/blob/main/docs/wiki/Project-status.md). There is no separate wiki here; update those pages when SMT changes.
 
 Boundaries:
 
