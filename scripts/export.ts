@@ -11,7 +11,10 @@ import { pathToFileURL } from 'node:url'
 import { readCommunityExport } from 'scholar-meta'
 import { buildExport, serializeShard } from './lib/export-core.js'
 import type { ExportFiles } from './lib/export-core.js'
-import { REPO_ROOT, loadActors, loadAssertions, loadBlocklist, loadConfig, loadRoles, loadVocab, loadWorks, policyOf } from './lib/store.js'
+import { REPO_ROOT, ledgerOf, loadActors, loadAssertions, loadBlocklist, loadConfig, loadGold, loadRoles, loadVocab, loadWorks, policyOf } from './lib/store.js'
+import type { Ledger } from './lib/store.js'
+import { evaluateModels } from './lib/quality-core.js'
+import type { QualityReport } from './lib/quality-core.js'
 
 export interface ExportOptions {
   root?: string
@@ -64,12 +67,13 @@ export function runExport(opts: ExportOptions = {}): { files: ExportFiles; outDi
     source_commit: opts.sourceCommit === undefined ? gitHead(root) : opts.sourceCommit,
     stale_days: config.queue.stale_days,
   })
-  writeExport(outDir, files)
+  // 两个旁路文件（不在引擎契约里，宿主的读取函数不看）：账本摘要与模型质量。都由仓库内容确定，所以重放比对也核到它们
+  writeExport(outDir, files, { ledger: ledgerOf(root), quality: evaluateModels(assertions, loadGold(root).rows) })
   const issues = selfCheck(files)
   return { files, outDir, issues }
 }
 
-export function writeExport(outDir: string, files: ExportFiles): void {
+export function writeExport(outDir: string, files: ExportFiles, extra: { ledger?: Ledger; quality?: QualityReport } = {}): void {
   rmSync(outDir, { recursive: true, force: true })
   mkdirSync(join(outDir, 'works'), { recursive: true })
   for (const [path, works] of files.shards) writeFileSync(join(outDir, path), serializeShard(works), 'utf8')
@@ -78,6 +82,8 @@ export function writeExport(outDir: string, files: ExportFiles): void {
   writeFileSync(join(outDir, 'bindings.json'), `${JSON.stringify(files.bindings)}\n`, 'utf8')
   writeFileSync(join(outDir, 'concepts.json'), `${JSON.stringify(files.concepts)}\n`, 'utf8')
   writeFileSync(join(outDir, 'queues.json'), `${JSON.stringify(files.queues, null, 2)}\n`, 'utf8')
+  if (extra.ledger) writeFileSync(join(outDir, 'ledger.json'), `${JSON.stringify(extra.ledger, null, 2)}\n`, 'utf8')
+  if (extra.quality) writeFileSync(join(outDir, 'quality.json'), `${JSON.stringify(extra.quality, null, 2)}\n`, 'utf8')
 }
 
 /** 用写出的内容（重新解析字节）走引擎读回：契约、形状、摘要都由引擎说了算 */

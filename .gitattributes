@@ -1,0 +1,5 @@
+# 账本与快照是「只追加、一行一条」的文件：两边各自追加时取并集，不报冲突。
+# 读取时按时间与 id 排序，行在文件里的先后不影响裁决与重放。
+data/assertions/**/*.jsonl merge=union
+data/works/*.jsonl merge=union
+data/actors.jsonl merge=union

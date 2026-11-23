@@ -21,7 +21,7 @@ import {
 } from './lib/intake-core.js'
 import type { Actor, IntakeResult, Submission } from './lib/intake-core.js'
 import {
-  REPO_ROOT, appendJsonl, appendWork, findWork, loadActors, loadAssertions, loadBlocklist, loadConfig, loadRoles, loadVocab, loadWorks, monthFile, paths, policyOf, rememberActor,
+  REPO_ROOT, appendAssertions, appendWork, findWork, loadActors, loadAssertions, loadBlocklist, loadConfig, loadRoles, loadVocab, loadWorks, monthFile, paths, policyOf, rememberActor,
 } from './lib/store.js'
 import type { WorkSnapshot } from './lib/store.js'
 
@@ -180,9 +180,8 @@ export async function runIntake(deps: IntakeDeps): Promise<IntakeRun> {
     const p = paths(root)
     const touched: string[] = []
     if (accepted.length > 0 && !deps.dry) {
-      const file = join(p.assertions, monthFile(t0).rel)
-      appendJsonl(file, accepted)
-      touched.push(file)
+      const file = appendAssertions(accepted, t0, root)
+      if (file) touched.push(file)
       if (snapshot) { touched.push(appendWork(snapshot, root)); works.set(snapshot.work_id, snapshot) }
       for (const r of results) if (rememberActor(actors, r.actor.id, r.actor.login, t0.toISOString(), root)) touched.push(p.actors)
       if (deps.git) {

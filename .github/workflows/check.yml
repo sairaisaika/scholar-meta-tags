@@ -2,6 +2,8 @@ name: check
 
 # 结构闸：词表（id 唯一、broader 无环且 ≤ 3、design 等于引擎常量、孤儿概念）、JSONL 每行可解析、无邮箱、文件 < 50 MB、
 # 名片无摘要、导出能被 readCommunityExport 零问题读回、脚本测试与类型；私有词闸复用引擎仓的脚本。
+# 只追加闸：与推送前的提交（PR 则与基线）比，旧断言不许改、不许删（声明过的抹名除外）；基准不在历史里（被强推过）判失败。
+# 贡献包（imports/*.json）只验不写；标注页的浏览器测试在这里跑（离线，三个夹具根）。
 on:
   push:
     branches: [main]
@@ -15,7 +17,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v5
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
       - uses: actions/setup-node@v5
         with:
           node-version-file: .nvmrc
@@ -23,8 +27,18 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm test
-      - run: pnpm check
+      - name: 结构闸 + 只追加闸
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: pnpm check --append-only "$BASE"
+      - name: 贡献包只验不写
+        run: pnpm bulk --dry-run
       - run: pnpm export && pnpm check --export export/v1
+      - name: 标注页浏览器测试（离线）
+        run: |
+          pnpm exec playwright install --with-deps chromium
+          pnpm site:build
+          node site/test/e2e.mjs
       - name: 私有词闸（词表存成 secret PRIVATE_TERMS，隐去模式只印处数）
         env:
           PRIVATE_TERMS: ${{ secrets.PRIVATE_TERMS }}

@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v5
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
       - uses: actions/setup-node@v5
         with:
           node-version-file: .nvmrc
@@ -29,10 +29,17 @@ jobs:
       - run: pnpm sample
         env:
           OPENALEX_API_KEY: ${{ secrets.OPENALEX_API_KEY }}
-      - uses: peter-evans/create-pull-request@v7
+      # 机器人开的 PR 上，check 工作流要人批准才跑；所以开 PR 之前先在这里自检一遍，不过就不开
+      - name: 自检（类型、测试、结构闸、导出读回）
+        run: |
+          pnpm typecheck
+          pnpm test
+          pnpm check
+          pnpm export && pnpm check --export export/v1
+      - uses: peter-evans/create-pull-request@22a9089034f40e5a961c8808d113e2c98fb63676 # v7.0.11
         with:
           branch: sample/refresh
           title: 'sample: refresh the starter shelf'
           commit-message: 'sample: refresh the starter shelf'
-          body: '由 sample 工作流生成：名片快照（无摘要）与模型层建议断言。合并前看一眼主题是否仍合适。'
+          body: '由 sample 工作流生成：名片快照（无摘要）与模型层建议断言。开 PR 之前已在同一次运行里过了类型、测试、结构闸与导出读回。合并前看一眼主题是否仍合适。'
           labels: sample

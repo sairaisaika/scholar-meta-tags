@@ -16,18 +16,22 @@
     "replay": "tsx scripts/replay.ts",
     "check": "tsx scripts/check.ts",
     "redact": "tsx scripts/redact.ts",
+    "bulk": "tsx scripts/import.ts",
+    "evaluate": "tsx scripts/evaluate.ts",
     "test": "node --import tsx --test scripts/*.test.ts",
     "typecheck": "tsc -p tsconfig.json",
     "site:build": "tsx site/build.ts",
-    "site:dev": "tsx site/build.ts --watch"
+    "site:dev": "tsx site/build.ts --watch",
+    "site:test": "pnpm -s export && pnpm -s site:build && node site/test/e2e.mjs"
   },
   "dependencies": {
-    "scholar-meta": "https://github.com/sairaisaika/scholar-meta-visulization/releases/download/v0.6.0/scholar-meta-0.6.0.tgz",
-    "pdfjs-dist": "^4.10.38"
+    "pdfjs-dist": "^4.10.38",
+    "scholar-meta": "https://github.com/sairaisaika/scholar-meta-visulization/releases/download/v0.6.2/scholar-meta-0.6.2.tgz"
   },
   "devDependencies": {
     "@types/node": "^20",
     "esbuild": "^0.25.0",
+    "playwright": "1.63.0",
     "tsx": "^4.19.0",
     "typescript": "^5"
   }

@@ -28,7 +28,9 @@ test('sampleOf：作品键优先 DOI；摘要置空；主主题一条 + 关键�
 test('runSample：写名片与断言、更新 sample.json；重跑不重复、不改时间戳；无网不改文件', async () => {
   const root = makeTempRepo()
   const second = { ...card, id: 'openalex:W2', doi: '10.1000/second', pmid: null, title: 'Second', topics: [], keywords: ['Sleep'] }
-  const oa = fakeOpenAlex('found', [{ ...card, abstract: 'leak' }, second])
+  // 第三条是期刊封面之类的记录（paratext），不该进书架
+  const cover = { ...card, id: 'openalex:W3', doi: '10.1000/journal', title: 'Journal of Something', publication_type: 'paratext' }
+  const oa = fakeOpenAlex('found', [{ ...card, abstract: 'leak' }, second, cover])
   const r = await runSample({ root, openalex: oa, now: () => new Date('2026-10-31T00:00:00Z'), log: () => {} })
   assert.deepEqual([r.offline, r.works], [false, 2])
   const works = loadWorks(root)

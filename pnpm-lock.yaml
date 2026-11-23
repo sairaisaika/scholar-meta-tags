@@ -12,8 +12,8 @@ importers:
         specifier: ^4.10.38
         version: 4.10.38
       scholar-meta:
-        specifier: https://github.com/sairaisaika/scholar-meta-visulization/releases/download/v0.6.0/scholar-meta-0.6.0.tgz
-        version: https://github.com/sairaisaika/scholar-meta-visulization/releases/download/v0.6.0/scholar-meta-0.6.0.tgz
+        specifier: https://github.com/sairaisaika/scholar-meta-visulization/releases/download/v0.6.2/scholar-meta-0.6.2.tgz
+        version: https://github.com/sairaisaika/scholar-meta-visulization/releases/download/v0.6.2/scholar-meta-0.6.2.tgz
     devDependencies:
       '@types/node':
         specifier: ^20
@@ -21,6 +21,9 @@ importers:
       esbuild:
         specifier: ^0.25.0
         version: 0.25.12
+      playwright:
+        specifier: 1.63.0
+        version: 1.63.0
       tsx:
         specifier: ^4.19.0
         version: 4.23.15
@@ -439,9 +442,19 @@ packages:
     resolution: {integrity: sha512-/Y3fcFrXEAsMjJXeL9J8+ZG9U01LbuWaYypvDW2ycW1jL269L3js3DVBjDJ0Up9Np1uqDXsDrRihHANhZOlwdQ==}
     engines: {node: '>=20'}
 
-  scholar-meta@https://github.com/sairaisaika/scholar-meta-visulization/releases/download/v0.6.0/scholar-meta-0.6.0.tgz:
-    resolution: {integrity: sha512-2vGCQbPlYcQeblN+FInOeSB8BDyXrWdWjYXjF6nuV/T2C0v432j/iVK9KSrUVBrqBKRWSisZE34RVQmKfFvXQg==, tarball: https://github.com/sairaisaika/scholar-meta-visulization/releases/download/v0.6.0/scholar-meta-0.6.0.tgz}
-    version: 0.6.0
+  playwright-core@1.63.0:
+    resolution: {integrity: sha512-rYCsBF/M5HjUch52bbtVONEFjv6Xu8sm8h72dNlR5bzIE1fvC/bxgspzkjSfU+MweEMmPM8KJebG6nnyxo5mCg==}
+    engines: {node: '>=20'}
+    hasBin: true
+
+  playwright@1.63.0:
+    resolution: {integrity: sha512-+7ziBLidS4NaNCdt57SUDT+wYmmd5fmiQejUic/kb+YsYSCPyOOE9sebzMjNmQrsnNpDJqd4WHvV/8lfKfUDUg==}
+    engines: {node: '>=20'}
+    hasBin: true
+
+  scholar-meta@https://github.com/sairaisaika/scholar-meta-visulization/releases/download/v0.6.2/scholar-meta-0.6.2.tgz:
+    resolution: {integrity: sha512-Ywn/O23cYC3ao9HTDen/n7W7HMs5F8DNBJU8Cr0b/uxllIShyfueSoD0A5F2oRf21VuM6Q9m7xjhRCpI7xVvKA==, tarball: https://github.com/sairaisaika/scholar-meta-visulization/releases/download/v0.6.2/scholar-meta-0.6.2.tgz}
+    version: 0.6.2
     engines: {node: '>=20'}
 
   tsx@4.23.15:
@@ -732,7 +745,13 @@ snapshots:
     optionalDependencies:
       '@napi-rs/canvas': 0.1.100
 
-  scholar-meta@https://github.com/sairaisaika/scholar-meta-visulization/releases/download/v0.6.0/scholar-meta-0.6.0.tgz: {}
+  playwright-core@1.63.0: {}
+
+  playwright@1.63.0:
+    dependencies:
+      playwright-core: 1.63.0
+
+  scholar-meta@https://github.com/sairaisaika/scholar-meta-visulization/releases/download/v0.6.2/scholar-meta-0.6.2.tgz: {}
 
   tsx@4.23.15:
     dependencies:

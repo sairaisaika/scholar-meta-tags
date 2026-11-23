@@ -9,18 +9,29 @@ on:
 permissions:
   contents: read
   issues: write
+  actions: write
 
 jobs:
   replay:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v5
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
       - uses: actions/setup-node@v5
         with:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # 公开仓 60 天没有活动，GitHub 会停掉定时触发。每周在这里把四个定时工作流重新启用一次（已启用时是空操作）
+      - name: 保活定时工作流
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          for wf in intake export sample replay import; do
+            gh api -X PUT "repos/${GH_REPO}/actions/workflows/${wf}.yml/enable" >/dev/null && echo "enabled ${wf}" || echo "::warning::could not re-enable ${wf}"
+          done
       - run: pnpm replay
         env:
           GH_TOKEN: ${{ github.token }}

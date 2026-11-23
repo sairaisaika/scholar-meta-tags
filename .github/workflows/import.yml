@@ -1,0 +1,63 @@
+name: import
+
+# 批量入口：imports/*.json 里的贡献包（一个模型给一批论文打的标签）→ 模型层断言。校验全部交给引擎；模型层永不计票。
+# 包经 PR 进仓（check 工作流会先 `pnpm bulk --dry-run` 验形），合并后这里写入、提交、再导出。每天兜底跑一次（幂等）。
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'imports/**'
+  schedule:
+    - cron: '23 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: smt-import
+  cancel-in-progress: false
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.push.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: 贡献包入库（给没有名片的作品最多补 200 张）
+        run: pnpm bulk --cards 200
+        env:
+          OPENALEX_API_KEY: ${{ secrets.OPENALEX_API_KEY }}
+      - run: pnpm check
+      - id: push
+        name: 提交并推送（与入库并发时变基重试）
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data
+          if git diff --cached --quiet; then echo "changed=false" >> "$GITHUB_OUTPUT"; exit 0; fi
+          git commit -q -m "import: contribution packages"
+          # data 下的 JSONL 用并集合并（.gitattributes），与入库同时追加同一个文件也能变基；万一停在半路就放弃这次变基再试
+          for wait in 0 5 15 45; do
+            sleep "$wait"
+            if git pull --rebase -q && git push -q; then echo "changed=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+            git rebase --abort 2>/dev/null || true
+          done
+          echo "::error::push failed after retries"; exit 1
+  export:
+    needs: import
+    if: needs.import.outputs.changed == 'true'
+    uses: ./.github/workflows/export.yml
+    permissions:
+      contents: write
+      pages: write
+      id-token: write

@@ -1,9 +1,10 @@
 /**
  * 抹名：`pnpm redact gh:<id>`——全部断言里该账号的 `by.id` 换成 `redacted:<sha256(id + salt)[:12]>`（同一人仍同一键，裁决不变），
- * `data/actors.jsonl` 删掉该账号的行，`data/REDACTIONS.md` 追加日期与条数（不记登录名）。盐从 `REDACT_SALT` 环境变量来。
+ * `data/actors.jsonl` 删掉该账号的行，`data/gold/*.jsonl` 里该账号标的标准答案的 `by` 同样换掉，`data/REDACTIONS.md` 追加日期与条数（不记登录名）。盐从 `REDACT_SALT` 环境变量来。
  * 如实声明：公开 issue 与 git 历史里的登录名抹不掉——这一步只管 `data/`。
  */
 import { appendFileSync, readFileSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import type { EvidenceAnnotation } from 'scholar-meta'
 import { REPO_ROOT, listFiles, paths, readJsonl, sha256, writeJsonl } from './lib/store.js'
@@ -28,6 +29,19 @@ export function redact(id: string, salt: string, root: string = REPO_ROOT, now: 
       replaced++
       changed = true
       return JSON.stringify({ ...a, by: { ...a.by, id: to } })
+    })
+    if (changed) { writeFileSync(file, out.join('\n'), 'utf8'); files.push(file) }
+  }
+  // 标准答案里的标注人同样换掉（同一个新 id）
+  for (const file of listFiles(join(root, 'data', 'gold'), (n) => n.endsWith('.jsonl'))) {
+    const lines = readFileSync(file, 'utf8').split('\n')
+    let changed = false
+    const out = lines.map((line) => {
+      if (!line.trim()) return line
+      const g = JSON.parse(line) as { by?: unknown }
+      if (g.by !== id) return line
+      changed = true
+      return JSON.stringify({ ...g, by: to })
     })
     if (changed) { writeFileSync(file, out.join('\n'), 'utf8'); files.push(file) }
   }

@@ -14,6 +14,7 @@ on:
       - 'config/**'
       - 'site/**'
       - 'scripts/**'
+      - 'data/**'
 
 permissions:
   contents: write
@@ -30,8 +31,11 @@ jobs:
     outputs:
       enabled: ${{ steps.pages.outputs.enabled }}
     steps:
+      # 被入库 / 贡献包工作流调用时，它们刚推了新提交；这里取分支最新，不取触发时的那个提交
       - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v5
+        with:
+          ref: ${{ github.ref_name }}
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
       - uses: actions/setup-node@v5
         with:
           node-version-file: .nvmrc
@@ -57,11 +61,13 @@ jobs:
         uses: actions/upload-pages-artifact@v5
         with:
           path: site/dist
-      - name: 每日导出资产（UTC 03:xx 的那次运行，或手动）
-        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'schedule' && startsWith(github.event.schedule, '7 3 '))
+      # GitHub 的定时触发并不准点（实测每天约 4 次），所以不挑钟点：每次定时运行都试，当天已有存档就跳过；手动运行会覆盖当天那份
+      - name: 每日导出存档（当天第一次定时运行，或手动）
+        if: github.workflow == 'export' && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          ARCHIVE_FORCE: ${{ github.event_name == 'workflow_dispatch' && '1' || '' }}
         run: bash scripts/release-export.sh site/dist/export/v1
   deploy:
     needs: build

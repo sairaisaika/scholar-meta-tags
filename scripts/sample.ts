@@ -11,7 +11,7 @@ import { normalizeTag } from 'scholar-meta'
 import type { EvidenceAnnotation, EvidenceWorkCard } from 'scholar-meta'
 import { createOpenAlex } from './lib/openalex.js'
 import type { OpenAlex } from './lib/openalex.js'
-import { REPO_ROOT, annotationId, appendJsonl, appendWork, loadAssertions, loadWorks, monthFile, paths, readJson, writeJson } from './lib/store.js'
+import { REPO_ROOT, annotationId, appendAssertions, appendWork, loadAssertions, loadWorks, paths, readJson, writeJson } from './lib/store.js'
 import type { WorkSnapshot } from './lib/store.js'
 import { argValue } from './export.js'
 
@@ -68,13 +68,15 @@ export async function runSample(deps: SampleDeps): Promise<{ offline: boolean; w
     if (recent === null) { log(`⚠️ OpenAlex 没问成（${topic.id} 近两年）：这次不改任何文件`); return { offline: true, works: added, assertions: newAssertions } }
     const keys: string[] = []
     for (const card of [...top, ...recent]) {
+      // 期刊封面、目录之类的记录（OpenAlex 的 paratext）不是论文，不进书架
+      if (card.publication_type === 'paratext') continue
       const s = sampleOf(card, topic, at, version)
       if (!s) continue
       if (!keys.includes(s.snapshot.work_id)) keys.push(s.snapshot.work_id)
       if (!works.has(s.snapshot.work_id)) { appendWork(s.snapshot, root); works.set(s.snapshot.work_id, s.snapshot); added++ }
       const fresh = s.assertions.filter((a) => !existingIds.has(a.id))
       if (fresh.length > 0) {
-        appendJsonl(join(paths(root).assertions, monthFile(now).rel), fresh)
+        appendAssertions(fresh, now, root)
         for (const a of fresh) existingIds.add(a.id)
         newAssertions += fresh.length
       }
