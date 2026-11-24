@@ -23,7 +23,8 @@
     "typecheck": "tsc -p tsconfig.json",
     "site:build": "tsx site/build.ts",
     "site:dev": "tsx site/build.ts --watch",
-    "site:test": "pnpm -s export && pnpm -s site:build && node site/test/e2e.mjs"
+    "site:test": "pnpm -s export && pnpm -s site:build && node site/test/e2e.mjs",
+    "site:live": "node site/test/live.mjs"
   },
   "dependencies": {
     "pdfjs-dist": "^4.10.38",

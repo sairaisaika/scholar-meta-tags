@@ -1,6 +1,7 @@
 name: replay
 
 # 每周把全部断言从头重放，与最近一次导出逐字节比对；不一致就开 issue。顺带算互相认可比例异常的账号对，写进 queues。
+# 再用真的浏览器打开线上页面看一眼（只读）：页面读到的是不是已发布的那份导出、模型建议是不是标着「不计票」显示出来。
 on:
   schedule:
     - cron: '0 5 * * 0'
@@ -36,3 +37,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+      # 线上连不上 ⇒ 给警告、这次没看（不是通过）；看了且有一项不过 ⇒ 失败
+      - name: 线上页面冒烟（真的浏览器打开已发布的站点，只读）
+        env:
+          GH_REPO: ${{ github.repository }}
+        run: |
+          pnpm exec playwright install --with-deps chromium
+          pnpm site:live

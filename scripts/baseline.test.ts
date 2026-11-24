@@ -15,7 +15,7 @@ import { buildTagContribution } from 'scholar-meta'
 import type { EvidenceAnnotation } from 'scholar-meta'
 import { checkAppendOnly, checkExport, checkGoldRow, checkRepo, findEmail, isRedactionOf, main as checkMain } from './check.js'
 import { redact } from './redact.js'
-import { evaluateModels, qualityOf } from './evaluate.js'
+import { evaluateModels, main as evaluateMain, qualityOf } from './evaluate.js'
 import { runExport } from './export.js'
 import { main as importMain, runImport } from './import.js'
 import { answerOfNote, currentModelTags } from './lib/export-core.js'
@@ -303,6 +303,16 @@ test('⑤ 质量评估：模型建议对标准答案；没有标准答案为 nul
   // g.1：ADHD 命中、Sleep 多给、Children 漏掉；g.2：标准答案为空，CBT 多给；g.9 不在标准答案里，不算
   assert.deepEqual([m.micro.tp, m.micro.fp, m.micro.fn], [1, 2, 1])
   assert.deepEqual(m.works, { gold: 2, predicted: 3, with_predictions: 2 })
+  // pnpm evaluate 的输出：有标准答案时给出精确率、召回率、F1（人话与数字），以及社区裁决对标准答案那一节
+  const printed: string[] = []
+  const realLog = console.log
+  console.log = (...a: unknown[]) => { printed.push(a.join(' ')) }
+  try { assert.equal(await evaluateMain(['--root', root]), 0) } finally { console.log = realLog }
+  const report = printed.join('\n')
+  assert.match(report, /标准答案：2 篇，2 位标注人/)
+  assert.ok(report.includes('model-a @ 1\n  精确率 33.3% · 召回率 50% · F1 40%（命中 1，多给 2，漏掉 1）'), report)
+  assert.match(report, /社区裁决对标准答案（标准答案里已有标签裁决的作品 0 篇）\n\s+标准答案里的作品，社区还没有裁决出任何标签。/)
+  assert.ok(!report.includes('还没有标准答案'))
   const out = runExport({ root, out: 'export/v1', now: new Date(AT), sourceCommit: 'x', repository: '', maintainers: [] })
   assert.ok(existsSync(join(out.outDir, 'quality.json')))
   const written = JSON.parse(readFileSync(join(out.outDir, 'quality.json'), 'utf8'))
