@@ -1,13 +1,13 @@
 name: tag
 
-# 批量打标签：取名片（外部索引，游标分页）→ 词表打标签器出贡献包（imports/*.json）→ 自检 → 开 PR。
+# 批量打标签：取名片（外部索引，从今年往回每年取被引最高的一页）→ 词表打标签器出贡献包（imports/*.json）→ 自检 → 开 PR。
 # 打标签器只读仓里存着的名片字段与 vocab/tags.json，所以包可以从仓里逐字节重算（pnpm tag --check）。
 # 合并 PR 之后由 import 工作流写入账本；模型层永不计票。手动触发：一次跑多少篇由人决定。
 on:
   workflow_dispatch:
     inputs:
       harvest:
-        description: '每个种子主题取几篇（按被引从高到低；0 = 不取新名片，只用仓里已有的）'
+        description: '每个种子主题取几篇（从今年往回，每年被引最高的 200 篇，最多 60 年；0 = 不取新名片，只用仓里已有的）'
         default: '2600'
       min_works:
         description: '打出标签的作品至少几篇，不够就失败、不开 PR'

@@ -88,7 +88,7 @@ export function fakeOpenAlex(mode: 'found' | 'not_found' | 'error' = 'found', li
   return {
     async fetchCard() { return mode === 'found' ? { kind: 'found', card: { ...card, abstract: null } } : { kind: mode } },
     async listCards() { return list },
-    async pageCards(_filter, total) { return mode === 'error' ? { cards: (list ?? []).slice(0, 1), complete: false, pages: 1 } : { cards: (list ?? []).slice(0, total), complete: true, pages: 1 } },
+    async harvestCards(_filter, total) { return mode === 'error' ? { cards: (list ?? []).slice(0, 1), complete: false, pages: 1 } : { cards: (list ?? []).slice(0, total), complete: true, pages: 1 } },
   }
 }
 

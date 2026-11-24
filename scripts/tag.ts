@@ -11,7 +11,7 @@
  *     要在同一个提交里重新出包——否则可复现检查不过。
  *   · 模型层永不计票：这些标签只作建议（作品页标明「模型建议、不计票」）与质量评估的对象。
  * 三个动作：
- *   `pnpm tag --harvest <n>`  先取名片：`config/seeds.json` 每个主题按被引从高到低取 n 篇（游标分页），没有快照的写 `data/works/`；
+ *   `pnpm tag --harvest <n>`  先取名片：`config/seeds.json` 每个主题从今年往回、每年取被引最高的一页（≤ 200 篇），凑够 n 篇，没有快照的写 `data/works/`；
  *                             外部索引中途没问成 ⇒ 已取到的保留、打印警告并记到运行输出里（不把「没问成」当「没有」）。
  *   `pnpm tag [--min-works <n>]`  出包；打出标签的作品少于 n ⇒ 不写文件、退出码 1。
  *   `pnpm tag --check`  可复现检查：`imports/` 里本模型的包必须与从仓里重算出来的那一套逐文件、逐字节相同，否则退出码 1。
@@ -223,11 +223,12 @@ export async function checkPackages(root: string = REPO_ROOT): Promise<TagCheck>
 
 export interface HarvestDeps { root?: string; openalex: OpenAlex; perTopic: number; now?: () => Date; log?: (s: string) => void }
 
-/** 取名片：每个种子主题按被引从高到低取 `perTopic` 篇，没有快照的写进 `data/works/`。中途没问成 ⇒ `complete: false`，已取到的保留 */
+/** 取名片：每个种子主题从今年往回、每年取被引最高的一页，凑够 `perTopic` 篇；没有快照的写进 `data/works/`。中途没问成 ⇒ `complete: false`，已取到的保留 */
 export async function runHarvest(deps: HarvestDeps): Promise<{ complete: boolean; seen: number; added: number; pages: number }> {
   const root = deps.root ?? REPO_ROOT
   const log = deps.log ?? ((s: string) => console.log(s))
-  const at = (deps.now ?? (() => new Date()))().toISOString()
+  const now = (deps.now ?? (() => new Date()))()
+  const at = now.toISOString()
   const seeds = readJson<Seeds & { _comment?: string }>(paths(root).seeds)
   const works = loadWorks(root)
   const known = new Set<string>()
@@ -238,7 +239,7 @@ export async function runHarvest(deps: HarvestDeps): Promise<{ complete: boolean
   let pages = 0
   for (const topic of seeds.topics) {
     const tid = topic.id.replace(/^openalex:/, '')
-    const r = await deps.openalex.pageCards(`primary_topic.id:${tid}${seeds.filters ? `,${seeds.filters}` : ''}`, deps.perTopic)
+    const r = await deps.openalex.harvestCards(`primary_topic.id:${tid}${seeds.filters ? `,${seeds.filters}` : ''}`, deps.perTopic, now.getUTCFullYear())
     pages += r.pages
     for (const card of r.cards) {
       // 期刊封面、目录之类的记录不是论文

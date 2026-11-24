@@ -1,7 +1,7 @@
 /**
  * 批量打标签管道：
  *   ① 受控词表自身的检查（键已归一、显示名对得上键、同一写法不指向两个标签）；
- *   ② 翻页取名片：游标分页、每页重试、中途没问成时已取到的照样交回；
+ *   ② 按年份取名片：每年一页（只用首页列表请求）、重试、中途没问成时已取到的照样交回；
  *   ③ 取名片 → 出包 → 可复现检查 → 入库 → 导出 → 建议旁路文件：重跑不变、篇数门槛、包被改动能被发现、词表一改是新版本；
  *   ④ 当前生效的模型建议：贡献包只算最新版本那一组、样本逐键累积、别名并到同一篇、黑名单；旁路文件被改动 / 与账本对不上能被发现；
  *   ⑤ 社区裁决对标准答案；没有裁决时如实是「没有」。
@@ -15,7 +15,7 @@ import { checkExport, checkRepo, checkSuggestions, checkTagVocabulary } from './
 import { runExport } from './export.js'
 import { runImport } from './import.js'
 import { IMPORT_FORM, answerOfNote, buildSuggestions, confidenceOfNote, currentModelTags } from './lib/export-core.js'
-import { PAGE_ATTEMPTS, createOpenAlex } from './lib/openalex.js'
+import { HARVEST_MAX_YEARS, PAGE_ATTEMPTS, createOpenAlex } from './lib/openalex.js'
 import { evaluateQuality } from './lib/quality-core.js'
 import { appendWork, loadAssertions, loadVocab, loadWorks, readJson, writeJson } from './lib/store.js'
 import { card, fakeOpenAlex, makeTempRepo } from './lib/test-fixtures.js'
@@ -54,55 +54,56 @@ test('① 受控词表：仓里的词表没有问题；键没归一、显示名�
   assert.notEqual(taggerVersion([...e, { tag: 'C', aliases: [] }], base), v)
 })
 
-test('② 翻页取名片：跟着游标翻到够数；某页重试后成功；一直不成就交回已取到的并说没取完', async () => {
-  const pages: Record<string, { results: unknown[]; next: string | null }> = {
-    '*': { results: [raw(paper(1)), raw(paper(2))], next: 'c2' },
-    c2: { results: [raw(paper(3)), raw(paper(4))], next: 'c3' },
-    c3: { results: [raw(paper(5))], next: null },
-  }
+test('② 按年份取名片：从今年往回、每年一页，凑够为止；某一年重试后成功；一直不成就交回已取到的并说没取完；不无限翻', async () => {
+  const byYear: Record<string, unknown[]> = { 2026: [raw(paper(1)), raw(paper(2))], 2025: [raw(paper(3)), raw(paper(2))], 2024: [raw(paper(4)), {}], 2023: [raw(paper(5))] }
   const calls: string[] = []
+  const urls: string[] = []
+  const logged: Array<Record<string, unknown>> = []
   let failures = 0
   const make = (failOn: string | null, times: number) => createOpenAlex({
     sleep: async () => {},
+    log: (_m, d) => logged.push(d),
     fetch: (async (url: string) => {
-      const cursor = decodeURIComponent(/cursor=([^&]+)/.exec(url)![1]!)
-      calls.push(cursor)
-      if (cursor === failOn && failures < times) { failures++; return { ok: false, status: 503, json: async () => ({}) } }
-      const p = pages[cursor]!
-      return { ok: true, status: 200, json: async () => ({ meta: { next_cursor: p.next }, results: p.results }) }
+      urls.push(url)
+      const year = /publication_year%3A(\d{4})/.exec(url)![1]!
+      calls.push(year)
+      if (year === failOn && failures < times) { failures++; return { ok: false, status: 401, text: async () => `denied ${'x'.repeat(400)}`, json: async () => ({}) } }
+      return { ok: true, status: 200, json: async () => ({ results: byYear[year] ?? [] }) }
     }) as never,
   })
-  const all = await make(null, 0).pageCards('primary_topic.id:T1', 10)
-  assert.deepEqual([all.cards.length, all.complete, all.pages], [5, true, 3])
-  assert.ok(all.cards.every((c) => c.abstract === null))
-  assert.match(calls[0]!, /^\*$/)
-  // 只要 3 篇：第二页拿到就停
-  const some = await make(null, 0).pageCards('x', 3)
-  assert.deepEqual([some.cards.length, some.complete, some.pages], [3, true, 2])
-  // 第二页先失败一次，重试成功
+  // 只要 4 篇：翻到 2024 就够了（2025 里重复的那一篇不重复算）
+  const some = await make(null, 0).harvestCards('primary_topic.id:T1', 4, 2026)
+  assert.deepEqual([some.cards.length, some.complete, some.pages, calls], [4, true, 3, ['2026', '2025', '2024']])
+  assert.ok(some.cards.every((c) => c.abstract === null))
+  // 请求的样子：原过滤条件保留、再加年份；被引从高到低；一页 200；不用游标
+  assert.ok(urls.every((u) => u.includes(`filter=${encodeURIComponent('primary_topic.id:T1,publication_year:')}`) && u.includes('sort=cited_by_count:desc') && u.includes('per_page=200') && !u.includes('cursor=')), urls[0])
+  // 要的比有的多：往回翻满上限年数就停，如实是「就这么多」
+  calls.length = 0
+  const all = await make(null, 0).harvestCards('x', 100, 2026)
+  assert.deepEqual([all.cards.length, all.complete, calls.length], [5, true, HARVEST_MAX_YEARS])
+  // 2025 先失败一次，重试成功
   failures = 0
-  const retried = await make('c2', 1).pageCards('x', 10)
-  assert.deepEqual([retried.cards.length, retried.complete], [5, true])
-  // 第二页一直失败：交回第一页的两篇，complete 为 false
+  const retried = await make('2025', 1).harvestCards('x', 4, 2026)
+  assert.deepEqual([retried.cards.length, retried.complete], [4, true])
+  // 2025 一直失败：交回 2026 的两篇，complete 为 false
   failures = 0
-  const broken = await make('c2', PAGE_ATTEMPTS).pageCards('x', 10)
+  const broken = await make('2025', PAGE_ATTEMPTS).harvestCards('x', 4, 2026)
   assert.deepEqual([broken.cards.length, broken.complete, broken.pages], [2, false, 1])
-  // 游标不往前走、或一直给解析不出名片的条目：不无限翻下去，如实说没取完
-  let n = 0
-  const stuck = createOpenAlex({ sleep: async () => {}, fetch: (async () => { n++; return { ok: true, status: 200, json: async () => ({ meta: { next_cursor: 'same' }, results: [{}] }) } }) as never })
-  assert.deepEqual([(await stuck.pageCards('x', 400)).complete, n <= 3], [false, true])
-  n = 0
-  const junk = createOpenAlex({ sleep: async () => {}, fetch: (async () => ({ ok: true, status: 200, json: async () => ({ meta: { next_cursor: `c${++n}` }, results: [{}] }) })) as never })
-  const j = await junk.pageCards('x', 400)
-  assert.deepEqual([j.complete, j.cards.length, n < 20], [false, 0, true])
+  // 对方的错误说明进了日志（截到 200 个字符），日志里没有请求地址
+  const denied = logged.filter((d) => d.status === 401)
+  assert.equal(denied.length, 1 + PAGE_ATTEMPTS)
+  assert.ok(denied.every((d) => typeof d.detail === 'string' && d.detail.startsWith('denied') && d.detail.length === 200 && !JSON.stringify(d).includes('http')))
 })
 
 test('③ 取名片 → 出包 → 可复现检查 → 入库 → 导出：重跑不变；篇数门槛；包被动过、被冒用、少一篇都能发现；词表一改旧包换掉', async () => {
   const root = makeTempRepo()
   const cards = [paper(1), paper(2, { title: 'A randomised controlled trial of atomoxetine', keywords: [], mesh: ['Adult'] }), paper(3, { title: 'Untaggable title', keywords: [], mesh: [], topics: [] }),
     { ...paper(4), publication_type: 'paratext' }, paper(5, { doi: null, id: null })]
-  const h = await runHarvest({ root, openalex: fakeOpenAlex('found', cards), perTopic: 10, now: () => new Date(AT), log: () => {} })
+  const base = fakeOpenAlex('found', cards)
+  const asked: Array<[string, number, number]> = []
+  const h = await runHarvest({ root, openalex: { ...base, harvestCards: async (f, n, y) => { asked.push([f, n, y]); return base.harvestCards(f, n, y) } }, perTopic: 10, now: () => new Date(AT), log: () => {} })
   assert.deepEqual([h.complete, h.seen, h.added], [true, 3, 3]) // 期刊封面与没有作品键的不算
+  assert.deepEqual(asked, [['primary_topic.id:T10537,has_doi:true,is_retracted:false', 10, 2026]]) // 种子主题 + 配置里的过滤条件，从今年往回
   assert.equal(loadWorks(root).size, 3)
   assert.equal((await runHarvest({ root, openalex: fakeOpenAlex('found', cards), perTopic: 10, now: () => new Date(AT), log: () => {} })).added, 0)
   // 外部索引没问成：已取到的那一篇保留，如实说没取完；已有的名片不动
