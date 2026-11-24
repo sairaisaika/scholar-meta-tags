@@ -17,7 +17,8 @@ import { runImport } from './import.js'
 import { IMPORT_FORM, answerOfNote, buildSuggestions, confidenceOfNote, currentModelTags } from './lib/export-core.js'
 import { HARVEST_MAX_YEARS, PAGE_ATTEMPTS, createOpenAlex } from './lib/openalex.js'
 import { evaluateQuality } from './lib/quality-core.js'
-import { appendWork, loadAssertions, loadVocab, loadWorks, readJson, writeJson } from './lib/store.js'
+import { appendWork, loadAssertions, loadGold, loadReference, loadVocab, loadWorks, readJson, writeJson } from './lib/store.js'
+import { main as evaluateMain } from './evaluate.js'
 import { card, fakeOpenAlex, makeTempRepo } from './lib/test-fixtures.js'
 import { TAGGER_ID, checkPackages, main as tagMain, packageName, runHarvest, runTag, taggerInputOf, taggerVersion, vocabularyEntries } from './tag.js'
 
@@ -340,4 +341,68 @@ test('⑤ 社区裁决对标准答案：成立的标签当预测、研究设计�
   // 没有标准答案：如实是 null
   const none = evaluateQuality([], [], works).consensus!
   assert.deepEqual([none.works, none.tags.micro.precision, none.tags.coverage, none.design.agreement], [0, null, null, null])
+})
+
+test('⑥ 模型参考标注：与标准答案分开存、分开评；人与模型互不混入；输出写明不是人标、不是准确率（中英文都是）', async () => {
+  const root = makeTempRepo()
+  await runHarvest({ root, openalex: fakeOpenAlex('found', [paper(1), paper(2, { title: 'A trial of atomoxetine in adults', keywords: [], mesh: ['Adult'] })]), perTopic: 10, now: () => new Date(AT), log: () => {} })
+  await runTag({ root, log: () => {} })
+  await runImport({ root, now: () => new Date(AT), log: () => {} })
+  mkdirSync(join(root, 'data', 'model-reference'), { recursive: true })
+  mkdirSync(join(root, 'data', 'gold'), { recursive: true })
+  const ref = join(root, 'data', 'model-reference', 'r.jsonl')
+  const row = (work: string, tags: string[], by = 'model:llm-reader', at = AT) => JSON.stringify({ work_id: work, tags, by, at })
+  // t.1 的打标签器建议是 ADHD / Children / Methylphenidate / Working memory；参考标注者只同意前两个，另给了一个 Adolescents。
+  // 同一篇再用别名写一行（更晚）：算同一篇；第二位标注者 second-reader 恰好与打标签器同名时不拿它和自己比
+  writeFileSync(ref, [
+    row('doi:10.1000/t.1', ['Sleep'], 'model:llm-reader', '2026-11-01T00:00:00Z'), row('doi:10.1000/t.1', ['ADHD', 'Children', 'Adolescents']),
+    row('doi:10.1000/t.2', ['ADHD'], `model:${TAGGER_ID}`),
+  ].join('\n') + '\n')
+  assert.deepEqual(checkRepo(root), [])
+  // 同一个标注者对同一篇取最新一行；每个标注者一节
+  assert.deepEqual(loadReference(root).rows.map((r) => [r.by, r.work_id, r.tags.length]), [['model:llm-reader', 'doi:10.1000/t.1', 3], [`model:${TAGGER_ID}`, 'doi:10.1000/t.2', 1]])
+  const out = runExport({ root, out: 'export/v1', now: new Date(AT), sourceCommit: 'x', repository: '', maintainers: [] })
+  const quality = JSON.parse(readFileSync(join(out.outDir, 'quality.json'), 'utf8'))
+  // 标准答案那边如实是「没有」：参考标注不算标准答案
+  assert.deepEqual([quality.gold, quality.models[0].quality.micro.precision, quality.consensus.works], [{ works: 0, annotators: 0 }, null, 0])
+  assert.deepEqual(quality.model_reference.map((r: { by: string; kind: string; not_human: boolean; works: number; models: unknown[] }) => [r.by, r.kind, r.not_human, r.works, r.models.length]),
+    [['model:llm-reader', 'model', true, 1, 1], [`model:${TAGGER_ID}`, 'model', true, 1, 0]]) // 第二节里没有「自己比自己」
+  const agreement = quality.model_reference[0].models.find((m: { id: string }) => m.id === TAGGER_ID).agreement
+  assert.deepEqual([agreement.pairs, agreement.works], [{ both: 2, model_only: 2, reference_only: 1 }, { reference: 1, with_suggestions: 1 }])
+  // 这一节的键名里没有 gold / tp / fp 之类会被读成「对标准答案的成绩」的字眼
+  assert.ok(!/"(gold|tp|fp|fn|micro|support)"/.test(JSON.stringify(quality.model_reference)))
+  // pnpm evaluate：标准答案一节照旧说没有；参考标注单列一节，写明不是人标、不是准确率——中英文都不借用标准答案那几句话
+  const run = async (lang: string) => {
+    const printed: string[] = []
+    const realLog = console.log
+    console.log = (...a: unknown[]) => { printed.push(a.join(' ')) }
+    try { assert.equal(await evaluateMain(['--root', root, '--lang', lang]), 0) } finally { console.log = realLog }
+    return printed.join('\n')
+  }
+  const zh = await run('zh')
+  assert.match(zh, /标准答案：0 篇，0 位标注人/)
+  const zhSection = zh.slice(zh.indexOf('模型参考标注（不是人标的；标注者 model:llm-reader，1 篇）'))
+  assert.ok(zhSection.startsWith('模型参考标注（不是人标的') && zhSection.includes('不是准确率') && zhSection.includes('两边都给了 2 对 · 只有这个模型给了 2 · 只有参考标注者给了 1')
+    && zhSection.includes('精确率 50% · 召回率 66.7% · F1 57.1%') && !zhSection.includes('标准答案') && !zhSection.includes('命中'), zhSection)
+  const en = await run('en')
+  const enSection = en.slice(en.indexOf('Model comparison labels (NOT human-labelled'))
+  assert.ok(enSection.startsWith('Model comparison labels (NOT human-labelled') && enSection.includes('not accuracy') && enSection.includes('2 pairs given by both · 2 only by this model · 1 only by the comparison annotator')
+    && !/reference labels|correct|missed|in the reference\b/i.test(enSection), enSection)
+  // 别名：同一篇用别名再写一行，仍算一篇
+  writeFileSync(ref, [row('doi:10.1000/t.1', ['ADHD']), row('openalex:W9001', ['ADHD', 'Children'], 'model:llm-reader', '2026-11-25T00:00:00Z')].join('\n') + '\n')
+  const aliased = JSON.parse(readFileSync(join(runExport({ root, out: 'export/v1', now: new Date(AT), sourceCommit: 'x', repository: '', maintainers: [] }).outDir, 'quality.json'), 'utf8')).model_reference[0]
+  assert.deepEqual([aliased.works, aliased.models[0].agreement.works.reference], [1, 1])
+  // 互不混入：人的账号不许进参考标注，模型不许进标准答案；参考标注不带研究设计；标签必须在词表里
+  writeFileSync(ref, row('doi:10.1000/t.1', ['ADHD'], 'gh:12345') + '\n')
+  assert.ok(checkRepo(root).some((p) => p.what.includes('model-reference by must look like model:')))
+  assert.deepEqual(loadReference(root).rows, []) // 读取时也不认
+  writeFileSync(ref, JSON.stringify({ work_id: 'doi:10.1000/t.1', tags: ['ADHD'], by: 'model:llm-reader', at: AT, design: 'rct' }) + '\n')
+  assert.ok(checkRepo(root).some((p) => p.what.includes('tags only')))
+  writeFileSync(ref, row('doi:10.1000/t.1', ['Not In The Vocabulary']) + '\n')
+  assert.ok(checkRepo(root).some((p) => p.what.includes('not in vocab/tags.json')))
+  writeFileSync(ref, row('doi:10.1000/t.1', ['ADHD']) + '\n')
+  writeFileSync(join(root, 'data', 'gold', 'g.jsonl'), row('doi:10.1000/t.1', ['ADHD']) + '\n')
+  assert.ok(checkRepo(root).some((p) => p.what.includes('gold by must look like gh:')))
+  assert.deepEqual(loadGold(root).rows, []) // 模型的行放进标准答案目录，读取时不认——不会被当成标准答案去评
+  rmSync(root, { recursive: true, force: true })
 })

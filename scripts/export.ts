@@ -12,7 +12,7 @@ import { pathToFileURL } from 'node:url'
 import { readCommunityExport } from 'scholar-meta'
 import { buildExport, serializeShard, serializeSuggestions } from './lib/export-core.js'
 import type { ExportFiles } from './lib/export-core.js'
-import { REPO_ROOT, ledgerOf, loadActors, loadAssertions, loadBlocklist, loadConfig, loadGold, loadRoles, loadVocab, loadWorks, policyOf } from './lib/store.js'
+import { REPO_ROOT, ledgerOf, loadActors, loadAssertions, loadBlocklist, loadConfig, loadGold, loadReference, loadRoles, loadVocab, loadWorks, policyOf } from './lib/store.js'
 import type { Ledger } from './lib/store.js'
 import { evaluateQuality } from './lib/quality-core.js'
 import type { QualityReport } from './lib/quality-core.js'
@@ -69,7 +69,7 @@ export function runExport(opts: ExportOptions = {}): { files: ExportFiles; outDi
     stale_days: config.queue.stale_days,
   })
   // 旁路文件（不在引擎契约里，宿主的读取函数不看）：账本摘要、质量表、模型建议。都由仓库内容确定，所以重放比对也核到它们
-  writeExport(outDir, files, { ledger: ledgerOf(root), quality: evaluateQuality(assertions, loadGold(root).rows, files.export.works) })
+  writeExport(outDir, files, { ledger: ledgerOf(root), quality: evaluateQuality(assertions, loadGold(root).rows, files.export.works, loadReference(root).rows) })
   const issues = selfCheck(files)
   return { files, outDir, issues }
 }

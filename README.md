@@ -27,6 +27,7 @@
 data/assertions/<yyyy>/<mm>.jsonl   真源：断言，只追加（EvidenceAnnotation 一行一条）；一片满了（现定 2 MB）接着写 <mm>-002.jsonl
 data/works/<hh>.jsonl               名片快照（EvidenceWorkCard，摘要恒 null）
 data/gold/*.jsonl                   维护者标的标准答案（评估模型建议用，见 data/gold/README.md）
+data/model-reference/*.jsonl        模型参考标注——不是人标的，只量两个模型有多一致（见 data/model-reference/README.md）
 imports/*.json                      模型贡献包（批量入口，见 imports/README.md）
 vocab/                              分面词表、概念词表（broader 只导航）、受控标签词表（tags.json：显示名与别名）、编辑层绑定
 config/                             裁决参数、额外角色、黑名单、冷启动种子
@@ -46,7 +47,7 @@ site/                               静态标注页（浏览器直接用 scholar
 1. **导出是不是由账本算出来的。** 克隆本仓，检出导出清单里的 `source_commit`，运行 `pnpm install && pnpm export`，把 `export/v1/` 与发布的文件逐个比对（`manifest.json` 里的生成时间除外）。每周的 `replay` 工作流做的就是这件事，不一致会开 issue。
 2. **账本有没有被改写。** `ledger.json` 列出每个断言文件的字节数、行数与 sha256，以及总摘要；每天的 Release 存档说明里也写着当天的总摘要与断言条数。任取两天的存档：早的那份里的每个文件，都应当是晚的那份里同名文件的前缀。本仓的 `check` 工作流对每次推送都核这一条（`pnpm check --append-only <提交>`），唯一例外是记录在 `data/REDACTIONS.md` 里的抹名。
 3. **裁决是不是按写明的规则。** 规则参数随导出下发（`manifest.json` 的 `policy`）；裁决函数在引擎里（`resolveAnnotations`、`assessQuorum`），可以拿同一份断言自己跑。
-4. **模型建议准不准。** `quality.json` 是各模型的建议对标准答案的精确率、召回率与 F1，另有一节 `consensus`：社区裁决的结果对同一份标准答案。没有标准答案时如实为空。算法在引擎的 `scoreTagSets` 与 `scoreLabelAgreement`。
+4. **模型建议准不准。** `quality.json` 是各模型的建议对标准答案的精确率、召回率与 F1，另有一节 `consensus`：社区裁决的结果对同一份标准答案。没有标准答案时如实为空。算法在引擎的 `scoreTagSets` 与 `scoreLabelAgreement`。另有一节 `model_reference`：对**模型参考标注**（另一个模型读名片后标的，不是人标）的一致程度——它不是准确率，只在没有人标的标准答案时给个参照。
 5. **模型标签是不是照词表打出来的。** `imports/` 里本仓打标签器（`smt-vocabulary`）的包，必须与从仓里的名片、`vocab/tags.json` 和配置重算出来的那一套逐文件、逐字节相同：`pnpm tag --check`。每次推送与每次入库之前都核这一条；多一篇、少一篇、改一个标签、别的文件冒用这个模型 id，都不过。
 
 ## 批量打标签

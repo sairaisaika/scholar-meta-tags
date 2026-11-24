@@ -6,6 +6,7 @@
  *   · `--export <dir>`：用引擎 `readCommunityExport` 读回并要求 issues 为空，另核对每个分片的 sha256 与字节数；
  *     模型建议旁路文件（`suggestions.json` 与各片）的哈希、条数，并与账本里的模型标签断言对账。
  *   · 受控词表 `vocab/tags.json`：键已归一、显示名归一后等于键、同一个写法不指向两个标签。
+ *   · 模型参考标注 `data/model-reference/*.jsonl`：`by` 必须是 `model:<id>`、标签必须在受控词表里（人标的进 `data/gold/`，那里的 `by` 必须是 `gh:<数字>`——两边互不混入）。
  *   · 标准答案 `data/gold/*.jsonl`：作品键、标签数组（每个都能归一）、可选的研究设计（引擎词表内）、`by` 是账号 id；
  *   · `--append-only <git 引用>`：只追加闸——那个提交里的每个断言文件，现在的内容必须以它为字节前缀、文件不能消失。
  *     唯一例外是抹名：同一范围内 `data/REDACTIONS.md` 有新增内容时，允许某行只把 `by.id` 从 `gh:<数字>` 换成 `redacted:<12 hex>`。
@@ -18,8 +19,8 @@ import { join, relative, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { EVIDENCE_STUDY_DESIGNS, EVIDENCE_TRUST_TIERS, normalizeTag, readCommunityExport } from 'scholar-meta'
 import type { EvidenceAnnotation, EvidenceConcept } from 'scholar-meta'
-import { REPO_ROOT, listFiles, loadAssertions, loadBlocklist, loadVocab, loadWorks, paths, readJsonl, sha256 } from './lib/store.js'
-import type { GoldRow, Vocab, WorkSnapshot } from './lib/store.js'
+import { MODEL_ANNOTATOR, REPO_ROOT, listFiles, loadAssertions, loadBlocklist, loadVocab, loadWorks, paths, readJsonl, sha256 } from './lib/store.js'
+import type { GoldRow, ReferenceRow, Vocab, WorkSnapshot } from './lib/store.js'
 import { argValue } from './export.js'
 
 export const EMAIL = /[\w.+-]+@[\w-]+\.[\w.]+/
@@ -93,6 +94,21 @@ export function checkGoldRow(g: GoldRow, where: string): Problem[] {
   if (g.design !== undefined && g.design !== null && !(EVIDENCE_STUDY_DESIGNS as readonly string[]).includes(g.design)) out.push({ where, what: `gold design not in the engine vocabulary: ${String(g.design)}` })
   if (typeof g.by !== 'string' || !BY_ID.test(g.by)) out.push({ where, what: `gold by must look like gh:<digits>: ${String(g.by)}` })
   if (typeof g.at !== 'string' || Number.isNaN(Date.parse(g.at))) out.push({ where, what: 'gold at must be an ISO time' })
+  return out
+}
+
+/**
+ * 模型参考标注（`data/model-reference/*.jsonl`）的一行。标注者必须是 `model:<id>`——人的账号不许出现在这里，
+ * 模型也不许出现在标准答案里，两边互不混入。标签必须在受控词表里（`vocabulary` 是词表的标签键）。
+ */
+export function checkReferenceRow(r: ReferenceRow, where: string, vocabulary?: ReadonlySet<string>): Problem[] {
+  const out: Problem[] = []
+  if (!r || typeof r.work_id !== 'string' || !/^(doi|openalex|pmid):/.test(r.work_id)) { out.push({ where, what: `bad model-reference work_id ${String(r?.work_id)}` }); return out }
+  if (!Array.isArray(r.tags) || r.tags.some((t) => typeof t !== 'string' || normalizeTag(t) === null)) out.push({ where, what: 'model-reference tags must be an array of valid tags' })
+  else if (vocabulary) for (const t of r.tags) if (!vocabulary.has(normalizeTag(t)!)) out.push({ where, what: `model-reference tag is not in vocab/tags.json: ${t}` })
+  if (typeof r.by !== 'string' || !MODEL_ANNOTATOR.test(r.by)) out.push({ where, what: `model-reference by must look like model:<id> (human labels belong in data/gold): ${String(r.by)}` })
+  if (typeof r.at !== 'string' || Number.isNaN(Date.parse(r.at))) out.push({ where, what: 'model-reference at must be an ISO time' })
+  if ('design' in (r as object)) out.push({ where, what: 'model-reference rows carry tags only (no design)' })
   return out
 }
 
@@ -217,6 +233,7 @@ export function checkRepo(root: string = REPO_ROOT): Problem[] {
   const vocab = loadVocab(root)
   out.push(...checkFacets(vocab.facets), ...checkConcepts(vocab.concepts), ...checkTagVocabulary(vocab.tags))
 
+  const tagKeys = new Set(Object.keys(vocab.tags.tags))
   const dataFiles = [...listFiles(join(root, 'data')), ...listFiles(join(root, 'vocab')), ...listFiles(join(root, 'config')), ...listFiles(join(root, 'imports'))]
   for (const f of dataFiles) {
     const size = statSync(f).size
@@ -230,6 +247,7 @@ export function checkRepo(root: string = REPO_ROOT): Problem[] {
       for (const b of r.bad) out.push({ where: `${rel(f)}:${b.line}`, what: `unparsable JSONL line (${b.error})` })
       if (f.startsWith(p.assertions)) for (const row of r.rows) out.push(...checkAnnotation(row.value as EvidenceAnnotation, `${rel(f)}:${row.line}`))
       if (f.startsWith(join(root, 'data', 'gold'))) for (const row of r.rows) out.push(...checkGoldRow(row.value as GoldRow, `${rel(f)}:${row.line}`))
+      if (f.startsWith(join(root, 'data', 'model-reference'))) for (const row of r.rows) out.push(...checkReferenceRow(row.value as ReferenceRow, `${rel(f)}:${row.line}`, tagKeys))
       if (f.startsWith(p.works)) {
         for (const row of r.rows) {
           const w = row.value as WorkSnapshot

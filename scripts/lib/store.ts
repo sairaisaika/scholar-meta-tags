@@ -4,6 +4,7 @@
  * 形状全部来自引擎（`scholar-meta`），这里只管「文件在哪、一行怎么读」。
  *   · `data/assertions/<yyyy>/<mm>.jsonl`（满了接着写 `<mm>-002.jsonl`、`-003`…）：一行一条 `EvidenceAnnotation`，只追加；
  *   · `data/gold/*.jsonl`：维护者标的标准答案（一行一篇：作品键、标签、可选的研究设计），最新一行生效；
+ *   · `data/model-reference/*.jsonl`：模型参考标注（不是人标；`by` 是 `model:<id>`），与标准答案分开存、分开评；
  *   · `data/works/<hh>.jsonl`：名片快照（`abstract` 恒 null），`hh` ＝ sha256(work_id) 前两位十六进制；
  *   · `data/actors.jsonl`：`gh:<数字 id>` → 最近一次见到的登录名（最新一条生效）；
  *   · `vocab/`、`config/`：词表与规则参数。
@@ -236,7 +237,8 @@ export function loadGold(root: string = REPO_ROOT): { rows: GoldRow[]; bad: Arra
     const r = readJsonl<GoldRow>(file)
     for (const b of r.bad) bad.push({ ...b, file })
     for (const { value } of r.rows) {
-      if (!value || typeof value.work_id !== 'string' || !Array.isArray(value.tags)) continue
+      // 标准答案只收人标的：`by` 是模型的行不读（它们属于 data/model-reference；结构闸另外会报）
+      if (!value || typeof value.work_id !== 'string' || !Array.isArray(value.tags) || (typeof value.by === 'string' && value.by.startsWith('model:'))) continue
       const prev = latest.get(value.work_id)
       // 按时刻比（不同时区写法、带不带毫秒都能比对）；解析不了的当最早
       const t = (g: GoldRow) => { const n = Date.parse(String(g.at ?? '')); return Number.isNaN(n) ? -Infinity : n }
@@ -244,6 +246,34 @@ export function loadGold(root: string = REPO_ROOT): { rows: GoldRow[]; bad: Arra
     }
   }
   return { rows: [...latest.values()].sort((a, b) => (a.work_id < b.work_id ? -1 : a.work_id > b.work_id ? 1 : 0)), bad }
+}
+
+/** 模型参考标注的标注者：`model:<id>` */
+export const MODEL_ANNOTATOR = /^model:[a-z0-9][a-z0-9._-]{0,63}$/
+
+/** 模型参考标注的一行：不是人标的。`by` 形如 `model:<id>`，与标准答案（`gh:<数字>`）分开存、分开评 */
+export interface ReferenceRow { work_id: string; tags: string[]; by: string; at: string; note?: string | null }
+
+/**
+ * 模型参考标注：`data/model-reference/*.jsonl` 全部行，同一个标注者对同一篇取最新一行。坏行另报，不抛。
+ * 它们**不是标准答案**：是另一个模型读名片后给的标签，只能说明两个模型有多一致。
+ * 只收 `by` 是 `model:<id>` 的行——人的账号写在这里的行直接不读（结构闸另外会报）。
+ */
+export function loadReference(root: string = REPO_ROOT): { rows: ReferenceRow[]; bad: Array<JsonlBad & { file: string }> } {
+  const latest = new Map<string, ReferenceRow>()
+  const bad: Array<JsonlBad & { file: string }> = []
+  for (const file of listFiles(join(root, 'data', 'model-reference'), (n) => n.endsWith('.jsonl'))) {
+    const r = readJsonl<ReferenceRow>(file)
+    for (const b of r.bad) bad.push({ ...b, file })
+    for (const { value } of r.rows) {
+      if (!value || typeof value.work_id !== 'string' || typeof value.by !== 'string' || !MODEL_ANNOTATOR.test(value.by) || !Array.isArray(value.tags)) continue
+      const k = `${value.by}\u0000${value.work_id}`
+      const prev = latest.get(k)
+      const t = (g: ReferenceRow) => { const n = Date.parse(String(g.at ?? '')); return Number.isNaN(n) ? -Infinity : n }
+      if (!prev || t(value) >= t(prev)) latest.set(k, value)
+    }
+  }
+  return { rows: [...latest.values()].sort((a, b) => (a.by < b.by ? -1 : a.by > b.by ? 1 : a.work_id < b.work_id ? -1 : a.work_id > b.work_id ? 1 : 0)), bad }
 }
 
 export interface WorkSnapshot {
