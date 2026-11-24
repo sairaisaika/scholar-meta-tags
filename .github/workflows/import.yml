@@ -1,7 +1,8 @@
 name: import
 
 # 批量入口：imports/*.json 里的贡献包（一个模型给一批论文打的标签）→ 模型层断言。校验全部交给引擎；模型层永不计票。
-# 包经 PR 进仓（check 工作流会先 `pnpm bulk --dry-run` 验形），合并后这里写入、提交、再导出。每天兜底跑一次（幂等）。
+# 包经 PR 进仓，合并后这里写入、提交、再导出。每天兜底跑一次（幂等）。
+# 写入前后的检测节点都在本工作流里：验形、可复现、只追加、导出读回与对账——任何一个不过都不提交。
 on:
   push:
     branches: [main]
@@ -33,11 +34,19 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # 机器人的推送不会触发 check 工作流，所以检测节点放在写入的这个工作流自己身上：先验、再写、写完再比，过了才提交
+      - name: 写入之前：贡献包验形（整包不成形就停）与可复现检查（本仓打标签器的包从仓里重算要逐字节相同）
+        run: |
+          pnpm bulk --dry-run
+          pnpm tag --check
       - name: 贡献包入库（给没有名片的作品最多补 200 张）
         run: pnpm bulk --cards 200
         env:
           OPENALEX_API_KEY: ${{ secrets.OPENALEX_API_KEY }}
-      - run: pnpm check
+      - name: 写入之后：结构闸 + 只追加闸（与写入之前的提交比，旧行不许改、不许删）
+        run: pnpm check --append-only HEAD
+      - name: 写入之后：导出读回 + 模型建议与账本对账
+        run: pnpm export && pnpm check --export export/v1
       - id: push
         name: 提交并推送（与入库并发时变基重试）
         run: |

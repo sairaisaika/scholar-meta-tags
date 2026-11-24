@@ -1,5 +1,6 @@
 /**
- * 导出：读全部断言与名片 → `buildExport` → 写 `export/v1/*` → 用引擎 `readCommunityExport` 读回自检（issues 非空即失败）。
+ * 导出：读全部断言与名片 → `buildExport` → 写 `export/v1/*`（含旁路文件 `ledger.json`、`quality.json`、`suggestions.json` 与 `suggestions/`）
+ * → 用引擎 `readCommunityExport` 读回自检（issues 非空即失败）。
  * 用法：`pnpm export [--out export/v1] [--maintainers a,b] [--root <dir>]`
  * 维护者登录名：`--maintainers`，否则环境变量 `SMT_MAINTAINERS`（逗号分隔），否则 `config/roles.json` 里 maintainer 的登录名（经 actors.jsonl 反查）。
  * 派生导出不提交回 main（export/ 已 gitignore）。
@@ -9,11 +10,11 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { readCommunityExport } from 'scholar-meta'
-import { buildExport, serializeShard } from './lib/export-core.js'
+import { buildExport, serializeShard, serializeSuggestions } from './lib/export-core.js'
 import type { ExportFiles } from './lib/export-core.js'
 import { REPO_ROOT, ledgerOf, loadActors, loadAssertions, loadBlocklist, loadConfig, loadGold, loadRoles, loadVocab, loadWorks, policyOf } from './lib/store.js'
 import type { Ledger } from './lib/store.js'
-import { evaluateModels } from './lib/quality-core.js'
+import { evaluateQuality } from './lib/quality-core.js'
 import type { QualityReport } from './lib/quality-core.js'
 
 export interface ExportOptions {
@@ -67,8 +68,8 @@ export function runExport(opts: ExportOptions = {}): { files: ExportFiles; outDi
     source_commit: opts.sourceCommit === undefined ? gitHead(root) : opts.sourceCommit,
     stale_days: config.queue.stale_days,
   })
-  // 两个旁路文件（不在引擎契约里，宿主的读取函数不看）：账本摘要与模型质量。都由仓库内容确定，所以重放比对也核到它们
-  writeExport(outDir, files, { ledger: ledgerOf(root), quality: evaluateModels(assertions, loadGold(root).rows) })
+  // 旁路文件（不在引擎契约里，宿主的读取函数不看）：账本摘要、质量表、模型建议。都由仓库内容确定，所以重放比对也核到它们
+  writeExport(outDir, files, { ledger: ledgerOf(root), quality: evaluateQuality(assertions, loadGold(root).rows, files.export.works) })
   const issues = selfCheck(files)
   return { files, outDir, issues }
 }
@@ -82,6 +83,10 @@ export function writeExport(outDir: string, files: ExportFiles, extra: { ledger?
   writeFileSync(join(outDir, 'bindings.json'), `${JSON.stringify(files.bindings)}\n`, 'utf8')
   writeFileSync(join(outDir, 'concepts.json'), `${JSON.stringify(files.concepts)}\n`, 'utf8')
   writeFileSync(join(outDir, 'queues.json'), `${JSON.stringify(files.queues, null, 2)}\n`, 'utf8')
+  // 模型建议旁路文件：标注页打开某一篇时只取那一片；不在引擎契约里
+  mkdirSync(join(outDir, 'suggestions'), { recursive: true })
+  for (const [path, rows] of files.suggestions.shards) writeFileSync(join(outDir, path), serializeSuggestions(rows), 'utf8')
+  writeFileSync(join(outDir, 'suggestions.json'), `${JSON.stringify(files.suggestions.index, null, 2)}\n`, 'utf8')
   if (extra.ledger) writeFileSync(join(outDir, 'ledger.json'), `${JSON.stringify(extra.ledger, null, 2)}\n`, 'utf8')
   if (extra.quality) writeFileSync(join(outDir, 'quality.json'), `${JSON.stringify(extra.quality, null, 2)}\n`, 'utf8')
 }

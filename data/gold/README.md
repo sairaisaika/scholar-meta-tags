@@ -14,7 +14,9 @@
 - `by`：标注人的 GitHub 数字 id（`gh:<数字>`），不写登录名、不写邮箱。
 - `at`：标注时间。同一篇出现多行时，最新一行生效（改主意就追加一行，不改旧行）。
 
-怎么用：`pnpm evaluate` 打印各模型的精确率、召回率与 F1；导出时同样的结果写进 `export/v1/quality.json`。
+怎么用：`pnpm evaluate` 打印各模型的精确率、召回率与 F1，以及**社区裁决的结果**对这份标准答案的同一套指标（裁决为「成立」的标签当作预测；研究设计比裁决出来的值）；导出时同样的结果写进 `export/v1/quality.json`（后者在 `consensus` 一节）。社区还没有裁决的作品不算「社区说它没有标签」。
+
+标准答案只能由人标：不要用模型的输出、也不要让自动化脚本代写。
 
 如实说明：这些数只表示「与这份标准答案有多一致」。标准答案由维护者经 PR 加入；标多少篇、覆盖哪些主题才够有代表性，是维护者的判断，不是算法能保证的。
 
@@ -22,4 +24,4 @@
 
 Human reference labels for evaluating model suggestions; currently empty, in which case the quality table says so instead of showing zero.
 One JSON object per line: `work_id`, `tags` (an empty array means "none of them apply"), optional `design`, `by` (`gh:<numeric id>`), `at`.
-The latest line per work wins. Run `pnpm evaluate`; the same result is published as `quality.json` next to the export.
+The latest line per work wins. Run `pnpm evaluate`; the same result is published as `quality.json` next to the export, including `consensus` (community decisions against the same reference labels). Reference labels must be written by people.

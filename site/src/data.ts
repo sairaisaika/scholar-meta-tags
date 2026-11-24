@@ -56,7 +56,12 @@ function parseShard(text: string): unknown {
   const t = text.trim()
   if (!t) return []
   if (t.startsWith('[') || t.startsWith('{')) {
-    try { return JSON.parse(t) } catch { /* 当 JSON Lines 再试 */ }
+    try {
+      const v: unknown = JSON.parse(t)
+      // 只有一行的 JSON Lines 整个也是合法 JSON：它是一行，不是整片——包成数组（`{ works: [...] }` 这种整片写法原样交回）
+      if (Array.isArray(v) || (v !== null && typeof v === 'object' && Array.isArray((v as { works?: unknown }).works))) return v
+      return [v]
+    } catch { /* 当 JSON Lines 再试 */ }
   }
   const out: unknown[] = []
   for (const line of t.split('\n')) {
@@ -94,6 +99,47 @@ export async function loadExport(base: string): Promise<ExportState> {
 }
 
 const safeJson = (t: string): unknown => { try { return JSON.parse(t) } catch { return undefined } }
+
+/** 账本里某个模型给一篇作品的标签建议（模型层：永不计票） */
+export interface ModelSuggestion { id: string; version: string | null; tags: Array<{ tag_key: string; label: string; confidence: number | null }> }
+
+/** `failed` ＝ 没取成（网络、服务器错误）：不是「没有」，页面要如实说，也不记住这次失败 */
+export type SuggestionState = { status: 'ok'; models: ModelSuggestion[] } | { status: 'failed' }
+
+const suggestionCache = new Map<string, Promise<SuggestionState>>()
+
+/**
+ * 一篇作品的模型建议：导出的旁路文件 `suggestions/<hh>.jsonl`（hh ＝ sha256(作品键) 前两位十六进制，与作品分片同一种分法）。
+ * 只取这一片。没有这个文件（404）⇒ 没有建议；取不成 ⇒ `failed`（下次打开这一篇再取）。同一篇取成之后只取一次。
+ */
+export function loadSuggestions(base: string, workId: string): Promise<SuggestionState> {
+  const hit = suggestionCache.get(workId)
+  if (hit) return hit
+  const run = (async (): Promise<SuggestionState> => {
+    if (typeof location !== 'undefined' && location.protocol === 'file:') return { status: 'ok', models: [] }
+    if (typeof crypto === 'undefined' || !crypto.subtle) return { status: 'failed' }
+    const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(workId)))
+    const hh = (digest[0] ?? 0).toString(16).padStart(2, '0')
+    const res = await fetch(`${base.replace(/\/+$/, '')}/suggestions/${hh}.jsonl`, { cache: 'no-store' })
+    if (res.status === 404) return { status: 'ok', models: [] }
+    if (!res.ok) return { status: 'failed' }
+    const rows = parseShard(await res.text())
+    const row = (Array.isArray(rows) ? rows : []).find((r) => !!r && typeof r === 'object' && (r as { work_id?: unknown }).work_id === workId) as { models?: unknown } | undefined
+    const models: ModelSuggestion[] = []
+    for (const m of Array.isArray(row?.models) ? (row.models as Array<Record<string, unknown>>) : []) {
+      if (!m || typeof m.id !== 'string' || !Array.isArray(m.tags)) continue
+      const tags = (m.tags as Array<Record<string, unknown>>)
+        .filter((x) => !!x && typeof x.tag_key === 'string' && typeof x.label === 'string')
+        .map((x) => ({ tag_key: x.tag_key as string, label: x.label as string, confidence: typeof x.confidence === 'number' && Number.isFinite(x.confidence) ? x.confidence : null }))
+      if (tags.length > 0) models.push({ id: m.id, version: typeof m.version === 'string' ? m.version : null, tags })
+    }
+    return { status: 'ok', models }
+  })().catch((): SuggestionState => ({ status: 'failed' }))
+  suggestionCache.set(workId, run)
+  // 没取成的不留在缓存里
+  void run.then((r) => { if (r.status === 'failed' && suggestionCache.get(workId) === run) suggestionCache.delete(workId) })
+  return run
+}
 
 function index(exp: EvidenceCommunityExport): Loaded {
   const ports = createCommunityPorts(exp, { minVerification: 'single' })

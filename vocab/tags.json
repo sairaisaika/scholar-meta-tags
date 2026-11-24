@@ -1,19 +1,589 @@
 {
-    "_comment": "\u7ef4\u62a4\u8005\u7ef4\u62a4\u7684\u6807\u7b7e\u522b\u540d\uff08\u663e\u793a\u4e0e\u5efa\u8bae\u7528\uff0c\u4e0d\u6539\u5f52\u4e00\uff09\u3002tag_key \u2192 \u663e\u793a\u540d\u4e0e\u522b\u540d\u3002",
-    "tags": {
-        "cbt i": {
-            "label": "CBT-I",
-            "aliases": [
-                "CBTi",
-                "cognitive behavioural therapy for insomnia"
-            ]
-        },
-        "adhd": {
-            "label": "ADHD",
-            "aliases": [
-                "attention deficit hyperactivity disorder",
-                "\u6ce8\u610f\u7f3a\u9677\u591a\u52a8\u969c\u788d"
-            ]
-        }
+  "_comment": "维护者维护的受控词表：tag_key（引擎 normalizeTag 之后的键）→ 显示名与别名。别名是人定的对应（同义写法、缩写、主题词表里的叫法），不是机器翻译。页面用它显示与提示；词表打标签器（pnpm tag）用它在名片的标题、关键词、主题词里找整词。改这个文件 ⇒ 打标签器是新版本、出新的贡献包。把内容改回与某个旧版本一模一样时，另加一个顶层的 \"revision\": <数字>（每次加一），否则版本号也回到旧的、那一组不会重新生效。",
+  "tags": {
+    "adhd": {
+      "label": "ADHD",
+      "aliases": [
+        "attention deficit hyperactivity disorder",
+        "attention deficit/hyperactivity disorder",
+        "attention deficit disorder with hyperactivity",
+        "attention deficit disorder",
+        "hyperkinetic disorder",
+        "注意缺陷多动障碍"
+      ]
+    },
+    "adult adhd": {
+      "label": "Adult ADHD",
+      "aliases": [
+        "adult attention deficit hyperactivity disorder",
+        "adhd in adults",
+        "adults with adhd"
+      ]
+    },
+    "autism": {
+      "label": "Autism",
+      "aliases": [
+        "autism spectrum disorder",
+        "autism spectrum disorders",
+        "autistic disorder",
+        "autistic"
+      ]
+    },
+    "anxiety": {
+      "label": "Anxiety",
+      "aliases": [
+        "anxiety disorders",
+        "anxiety disorder"
+      ]
+    },
+    "depression": {
+      "label": "Depression",
+      "aliases": [
+        "depressive disorder",
+        "major depressive disorder",
+        "depressive symptoms"
+      ]
+    },
+    "bipolar disorder": {
+      "label": "Bipolar disorder",
+      "aliases": []
+    },
+    "conduct disorder": {
+      "label": "Conduct disorder",
+      "aliases": [
+        "conduct problems",
+        "disruptive behavior disorders"
+      ]
+    },
+    "oppositional defiant disorder": {
+      "label": "Oppositional defiant disorder",
+      "aliases": []
+    },
+    "tic disorders": {
+      "label": "Tic disorders",
+      "aliases": [
+        "tourette syndrome",
+        "tic disorder",
+        "tics"
+      ]
+    },
+    "substance use": {
+      "label": "Substance use",
+      "aliases": [
+        "substance use disorder",
+        "substance use disorders",
+        "substance abuse",
+        "substance misuse",
+        "substance related disorders"
+      ]
+    },
+    "sleep": {
+      "label": "Sleep",
+      "aliases": [
+        "sleep problems",
+        "sleep disorders",
+        "sleep disturbance",
+        "insomnia",
+        "sleep wake disorders"
+      ]
+    },
+    "obesity": {
+      "label": "Obesity",
+      "aliases": [
+        "overweight"
+      ]
+    },
+    "learning disabilities": {
+      "label": "Learning disabilities",
+      "aliases": [
+        "learning disability",
+        "learning disorders",
+        "dyslexia",
+        "reading disability"
+      ]
+    },
+    "epilepsy": {
+      "label": "Epilepsy",
+      "aliases": []
+    },
+    "comorbidity": {
+      "label": "Comorbidity",
+      "aliases": [
+        "comorbidities",
+        "psychiatric comorbidity",
+        "comorbid"
+      ]
+    },
+    "cbt i": {
+      "label": "CBT-I",
+      "aliases": [
+        "CBTi",
+        "cognitive behavioural therapy for insomnia",
+        "cognitive behavioral therapy for insomnia"
+      ]
+    },
+    "methylphenidate": {
+      "label": "Methylphenidate",
+      "aliases": []
+    },
+    "atomoxetine": {
+      "label": "Atomoxetine",
+      "aliases": [
+        "atomoxetine hydrochloride"
+      ]
+    },
+    "amphetamine": {
+      "label": "Amphetamine",
+      "aliases": [
+        "amphetamines",
+        "dextroamphetamine",
+        "lisdexamfetamine",
+        "lisdexamfetamine dimesylate",
+        "mixed amphetamine salts"
+      ]
+    },
+    "stimulants": {
+      "label": "Stimulants",
+      "aliases": [
+        "stimulant",
+        "stimulant medication",
+        "psychostimulants",
+        "psychostimulant",
+        "central nervous system stimulants"
+      ]
+    },
+    "guanfacine": {
+      "label": "Guanfacine",
+      "aliases": []
+    },
+    "clonidine": {
+      "label": "Clonidine",
+      "aliases": []
+    },
+    "pharmacotherapy": {
+      "label": "Pharmacotherapy",
+      "aliases": [
+        "adhd medication",
+        "pharmacological treatment",
+        "drug therapy",
+        "drug treatment",
+        "medication"
+      ]
+    },
+    "cognitive behavioral therapy": {
+      "label": "Cognitive behavioral therapy",
+      "aliases": [
+        "cognitive behavioural therapy",
+        "cognitive behavior therapy",
+        "cognitive behaviour therapy",
+        "cbt"
+      ]
+    },
+    "behavioral therapy": {
+      "label": "Behavioral therapy",
+      "aliases": [
+        "behavior therapy",
+        "behaviour therapy",
+        "behavioural therapy",
+        "behavioral treatment",
+        "behavioral intervention",
+        "behavioural intervention"
+      ]
+    },
+    "parent training": {
+      "label": "Parent training",
+      "aliases": [
+        "behavioral parent training",
+        "parent management training",
+        "parenting intervention",
+        "parenting program"
+      ]
+    },
+    "neurofeedback": {
+      "label": "Neurofeedback",
+      "aliases": [
+        "eeg biofeedback"
+      ]
+    },
+    "mindfulness": {
+      "label": "Mindfulness",
+      "aliases": [
+        "mindfulness based intervention",
+        "mindfulness training"
+      ]
+    },
+    "physical exercise": {
+      "label": "Physical exercise",
+      "aliases": [
+        "exercise",
+        "physical activity"
+      ]
+    },
+    "cognitive training": {
+      "label": "Cognitive training",
+      "aliases": [
+        "working memory training",
+        "computerized cognitive training"
+      ]
+    },
+    "diet and nutrition": {
+      "label": "Diet and nutrition",
+      "aliases": [
+        "diet",
+        "dietary",
+        "nutrition",
+        "omega 3 fatty acids"
+      ]
+    },
+    "school based intervention": {
+      "label": "School-based intervention",
+      "aliases": [
+        "school based",
+        "classroom intervention",
+        "classroom management"
+      ]
+    },
+    "children": {
+      "label": "Children",
+      "aliases": [
+        "child",
+        "childhood",
+        "school age children"
+      ]
+    },
+    "preschool children": {
+      "label": "Preschool children",
+      "aliases": [
+        "preschool",
+        "preschoolers",
+        "child preschool"
+      ]
+    },
+    "adolescents": {
+      "label": "Adolescents",
+      "aliases": [
+        "adolescent",
+        "adolescence",
+        "youth",
+        "teenagers"
+      ]
+    },
+    "adults": {
+      "label": "Adults",
+      "aliases": [
+        "adult",
+        "adulthood",
+        "young adult",
+        "young adults"
+      ]
+    },
+    "college students": {
+      "label": "College students",
+      "aliases": [
+        "university students"
+      ]
+    },
+    "sex differences": {
+      "label": "Sex differences",
+      "aliases": [
+        "gender differences",
+        "sex characteristics",
+        "sex factors"
+      ]
+    },
+    "randomized controlled trial": {
+      "label": "Randomized controlled trial",
+      "aliases": [
+        "randomised controlled trial",
+        "randomized trial",
+        "randomised trial",
+        "randomized controlled trials as topic",
+        "placebo controlled",
+        "double blind method"
+      ]
+    },
+    "meta analysis": {
+      "label": "Meta-analysis",
+      "aliases": [
+        "meta analyses",
+        "network meta analysis",
+        "meta analysis as topic"
+      ]
+    },
+    "systematic review": {
+      "label": "Systematic review",
+      "aliases": [
+        "systematic reviews",
+        "systematic reviews as topic"
+      ]
+    },
+    "longitudinal study": {
+      "label": "Longitudinal study",
+      "aliases": [
+        "longitudinal studies",
+        "longitudinal",
+        "cohort study",
+        "cohort studies",
+        "follow up studies",
+        "prospective studies"
+      ]
+    },
+    "twin study": {
+      "label": "Twin study",
+      "aliases": [
+        "twin studies",
+        "twins"
+      ]
+    },
+    "genome wide association study": {
+      "label": "Genome-wide association study",
+      "aliases": [
+        "gwas",
+        "genome wide association"
+      ]
+    },
+    "cross sectional study": {
+      "label": "Cross-sectional study",
+      "aliases": [
+        "cross sectional studies",
+        "cross sectional"
+      ]
+    },
+    "case control study": {
+      "label": "Case-control study",
+      "aliases": [
+        "case control studies"
+      ]
+    },
+    "prevalence": {
+      "label": "Prevalence",
+      "aliases": [
+        "adhd prevalence",
+        "community prevalence",
+        "epidemiology"
+      ]
+    },
+    "diagnosis": {
+      "label": "Diagnosis",
+      "aliases": [
+        "adhd diagnosis",
+        "diagnostic criteria",
+        "differential diagnosis",
+        "dsm diagnostic criteria",
+        "adhd assessment"
+      ]
+    },
+    "rating scales": {
+      "label": "Rating scales",
+      "aliases": [
+        "rating scale",
+        "psychiatric status rating scales",
+        "psychometric properties",
+        "psychometrics"
+      ]
+    },
+    "executive function": {
+      "label": "Executive function",
+      "aliases": [
+        "executive functions",
+        "executive functioning",
+        "executive dysfunction"
+      ]
+    },
+    "working memory": {
+      "label": "Working memory",
+      "aliases": [
+        "memory short term"
+      ]
+    },
+    "response inhibition": {
+      "label": "Response inhibition",
+      "aliases": [
+        "inhibitory control",
+        "inhibition psychological"
+      ]
+    },
+    "impulsivity": {
+      "label": "Impulsivity",
+      "aliases": [
+        "impulsive behavior",
+        "impulsiveness"
+      ]
+    },
+    "sustained attention": {
+      "label": "Sustained attention",
+      "aliases": [
+        "continuous performance test",
+        "vigilance"
+      ]
+    },
+    "emotion regulation": {
+      "label": "Emotion regulation",
+      "aliases": [
+        "emotional dysregulation",
+        "emotion dysregulation",
+        "emotional regulation"
+      ]
+    },
+    "reward processing": {
+      "label": "Reward processing",
+      "aliases": [
+        "reward",
+        "delay discounting",
+        "delay aversion"
+      ]
+    },
+    "genetics": {
+      "label": "Genetics",
+      "aliases": [
+        "heritability",
+        "genetic association",
+        "polygenic risk score",
+        "polygenic risk scores",
+        "genetic predisposition to disease",
+        "candidate gene"
+      ]
+    },
+    "dopamine": {
+      "label": "Dopamine",
+      "aliases": [
+        "dopamine transporter",
+        "dopamine receptor",
+        "dopaminergic",
+        "dopamine plasma membrane transport proteins"
+      ]
+    },
+    "neuroimaging": {
+      "label": "Neuroimaging",
+      "aliases": [
+        "fmri",
+        "functional magnetic resonance imaging",
+        "magnetic resonance imaging",
+        "mri",
+        "brain imaging",
+        "functional connectivity",
+        "default mode network"
+      ]
+    },
+    "eeg": {
+      "label": "EEG",
+      "aliases": [
+        "electroencephalography",
+        "event related potentials",
+        "evoked potentials"
+      ]
+    },
+    "academic achievement": {
+      "label": "Academic achievement",
+      "aliases": [
+        "academic performance",
+        "school performance",
+        "educational attainment",
+        "educational status"
+      ]
+    },
+    "social functioning": {
+      "label": "Social functioning",
+      "aliases": [
+        "peer relationships",
+        "peer relations",
+        "social skills",
+        "social behavior"
+      ]
+    },
+    "quality of life": {
+      "label": "Quality of life",
+      "aliases": [
+        "health related quality of life"
+      ]
+    },
+    "driving": {
+      "label": "Driving",
+      "aliases": [
+        "automobile driving",
+        "traffic accidents",
+        "transport accidents",
+        "accidents traffic"
+      ]
+    },
+    "suicidality": {
+      "label": "Suicidality",
+      "aliases": [
+        "suicide",
+        "suicidal behavior",
+        "suicidal ideation",
+        "self harm"
+      ]
+    },
+    "criminality": {
+      "label": "Criminality",
+      "aliases": [
+        "crime",
+        "delinquency",
+        "juvenile delinquency"
+      ]
+    },
+    "prenatal exposure": {
+      "label": "Prenatal exposure",
+      "aliases": [
+        "prenatal",
+        "prenatal exposure delayed effects",
+        "maternal smoking",
+        "pregnancy",
+        "preterm birth",
+        "low birth weight"
+      ]
+    },
+    "digital media": {
+      "label": "Digital media",
+      "aliases": [
+        "screen time",
+        "internet addiction",
+        "video games",
+        "gaming"
+      ]
+    },
+    "adverse effects": {
+      "label": "Adverse effects",
+      "aliases": [
+        "side effects",
+        "adverse events",
+        "adverse drug reactions",
+        "drug related side effects and adverse reactions"
+      ]
+    },
+    "stimulant misuse": {
+      "label": "Stimulant misuse",
+      "aliases": [
+        "prescription stimulant misuse",
+        "nonmedical use",
+        "prescription drug misuse"
+      ]
+    },
+    "treatment adherence": {
+      "label": "Treatment adherence",
+      "aliases": [
+        "medication adherence",
+        "adherence"
+      ]
+    },
+    "parenting": {
+      "label": "Parenting",
+      "aliases": [
+        "parenting stress",
+        "parental stress",
+        "family functioning",
+        "parent child relations"
+      ]
+    },
+    "childhood adversity": {
+      "label": "Childhood adversity",
+      "aliases": [
+        "adverse childhood experiences",
+        "maltreatment",
+        "child abuse",
+        "trauma"
+      ]
     }
+  }
 }

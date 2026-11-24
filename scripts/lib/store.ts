@@ -321,7 +321,8 @@ export interface FacetVocab {
 export interface Vocab {
   facets: FacetVocab
   concepts: EvidenceConcept[]
-  tags: { tags: Record<string, { label: string; aliases: string[] }> }
+  /** `revision`（可选）：只为让打标签器的版本号变一下——把词表改回与某个旧版本一模一样的内容时，加一才会被当成新的一版 */
+  tags: { revision?: number; tags: Record<string, { label: string; aliases: string[] }> }
   /** `vocab/bindings.jsonl` 原样（最新一条生效由导出端处理） */
   bindings: EvidenceTagBinding[]
 }

@@ -1,0 +1,75 @@
+name: tag
+
+# 批量打标签：取名片（外部索引，游标分页）→ 词表打标签器出贡献包（imports/*.json）→ 自检 → 开 PR。
+# 打标签器只读仓里存着的名片字段与 vocab/tags.json，所以包可以从仓里逐字节重算（pnpm tag --check）。
+# 合并 PR 之后由 import 工作流写入账本；模型层永不计票。手动触发：一次跑多少篇由人决定。
+on:
+  workflow_dispatch:
+    inputs:
+      harvest:
+        description: '每个种子主题取几篇（按被引从高到低；0 = 不取新名片，只用仓里已有的）'
+        default: '2600'
+      min_works:
+        description: '打出标签的作品至少几篇，不够就失败、不开 PR'
+        default: '2000'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: smt-tag
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - id: tag
+        name: 取名片并出包（外部索引没问成：已取到的保留并给警告；篇数不够：失败）
+        env:
+          OPENALEX_API_KEY: ${{ secrets.OPENALEX_API_KEY }}
+          HARVEST: ${{ inputs.harvest }}
+          MIN_WORKS: ${{ inputs.min_works }}
+        run: |
+          for v in "$HARVEST" "$MIN_WORKS"; do case "$v" in ''|*[!0-9]*) echo "::error::harvest 与 min_works 都要填非负整数"; exit 2;; esac; done
+          if [ "$HARVEST" -gt 0 ]; then pnpm tag --harvest "$HARVEST" --min-works "$MIN_WORKS"; else pnpm tag --min-works "$MIN_WORKS"; fi
+      # 机器人开的 PR 上 check 工作流要人批准才跑；所以开 PR 之前先在这里自检一遍，不过就不开
+      - name: 自检（类型、测试、可复现、贡献包验形、结构闸、导出读回）
+        run: |
+          pnpm typecheck
+          pnpm test
+          pnpm tag --check
+          pnpm bulk --dry-run
+          pnpm check
+          pnpm export && pnpm check --export export/v1
+      - name: 运行摘要
+        env:
+          TAGGED: ${{ steps.tag.outputs.tagged_works }}
+          SUGGESTIONS: ${{ steps.tag.outputs.suggestions }}
+          COMPLETE: ${{ steps.tag.outputs.harvest_complete }}
+        run: |
+          {
+            echo "### 批量打标签"
+            echo "- 打出标签的作品：$TAGGED 篇"
+            echo "- 建议：$SUGGESTIONS 条"
+            echo "- 取名片是否取完：${COMPLETE:-（这次没取）}"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: peter-evans/create-pull-request@22a9089034f40e5a961c8808d113e2c98fb63676 # v7.0.11
+        with:
+          branch: tag/batch
+          title: 'tag: vocabulary tagger batch'
+          commit-message: 'tag: vocabulary tagger batch'
+          body: |
+            由 tag 工作流生成：名片快照（无摘要）与词表打标签器的贡献包（`imports/`）。
+            打出标签的作品 ${{ steps.tag.outputs.tagged_works }} 篇，建议 ${{ steps.tag.outputs.suggestions }} 条；取名片是否取完：${{ steps.tag.outputs.harvest_complete || '这次没取' }}。
+            开 PR 之前已在同一次运行里过了类型、测试、可复现检查（从仓里重算逐字节相同）、贡献包验形、结构闸与导出读回。
+            合并后由 import 工作流写成模型层断言——永不计票，只作建议与质量评估的对象。
+          labels: tagging

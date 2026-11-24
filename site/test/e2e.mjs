@@ -2,6 +2,7 @@
 // 语言切换、盲复录、投票、标签页，并要求控制台没有脚本错误。全部离线：页面只读本机的静态文件，不连任何外部服务。
 // 用法：pnpm site:test（先导出并构建页面）。可选 --shots <目录> 存截图；PW_CHROMIUM 指定浏览器可执行文件。
 import { chromium } from 'playwright'
+import { createHash } from 'node:crypto'
 import { createServer } from 'node:http'
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { readFile, stat } from 'node:fs/promises'
@@ -55,11 +56,23 @@ const works = [
   work('doi:10.1234/fixture-b', 'openalex:W2', 'Second fixture trial of thing X', 2022, [row('o1', 'ADHD symptom severity', -0.3, -0.6, 0.0, 150, 0.05)]),
 ]
 const shard = works.map((w) => JSON.stringify(w)).join('\n') + '\n'
+// 只有一篇的分片：整片恰好是一个合法的 JSON 对象（线上多数分片如此），页面要把它当一行读
+const loneWork = work('doi:10.1234/fixture-lone', 'openalex:W3', 'A lone fixture paper in its own shard', 2023, [])
+const loneShard = JSON.stringify(loneWork) + '\n'
 const zero = { works: 0, assertions: 0, contributors: 0, accepted: 0, pending: 0, disputed: 0, frames: 0 }
 const roots = {
   empty: makeRoot('empty', { ...baseManifest, shards: [], counts: zero }, {}),
-  fixture: makeRoot('fixture', { ...baseManifest, shards: [{ path: 'works/ab.jsonl', bytes: shard.length, sha256: 'fixture', works: works.length }], counts: { ...zero, works: works.length, assertions: 9, contributors: 4 } }, { 'works/ab.jsonl': shard }),
+  fixture: makeRoot('fixture', { ...baseManifest, shards: [{ path: 'works/ab.jsonl', bytes: shard.length, sha256: 'fixture', works: works.length }, { path: 'works/cd.jsonl', bytes: loneShard.length, sha256: 'fixture', works: 1 }], counts: { ...zero, works: works.length + 1, assertions: 9, contributors: 4 } }, { 'works/cd.jsonl': loneShard, 'works/ab.jsonl': shard }),
   nodata: makeRoot('nodata', null, {}),
+}
+
+// 夹具根里的模型建议旁路文件：一个贡献包模型给 fixture-a 打了两个标签（名片里没有这两个词，所以页面上出现就一定来自旁路文件）
+const suggestionShard = (workId) => `suggestions/${createHash('sha256').update(workId).digest('hex').slice(0, 2)}.jsonl`
+{
+  const dir = join(roots.fixture, 'export', 'v1')
+  mkdirSync(join(dir, 'suggestions'), { recursive: true })
+  const rowA = { work_id: 'doi:10.1234/fixture-a', models: [{ id: 'fixture-tagger', version: 'r1-abc', tags: [{ tag_key: 'neurofeedback', label: 'Neurofeedback', confidence: 0.9 }, { tag_key: 'twin study', label: 'Twin study', confidence: null }] }] }
+  writeFileSync(join(dir, suggestionShard(rowA.work_id)), JSON.stringify(rowA) + '\n')
 }
 
 // ── 极简静态服务器（每个根一个，系统分配端口） ──
@@ -170,12 +183,24 @@ await page.goto(`${url.fixture}/#/`)
 await sleep(400)
 t = await text()
 check('fixture: shelf lists works', t.includes('A fixture trial') && t.includes('ADHD'))
+check('fixture: a single-line shard is read as one work', t.includes('A lone fixture paper in its own shard'))
 await shot('06-home-fixture.png')
 await page.goto(`${url.fixture}/#/w/doi%3A10.1234%2Ffixture-a`)
 await sleep(400)
 t = await text()
 check('fixture work: card + status', t.includes('Journal of Fixtures') && t.includes('这篇现在被说成什么') && t.includes('ADHD') && t.includes('争议') && t.includes('待定') && t.includes('Table 2'))
 check('fixture work: model suggestions separate', t.includes('建议 · 模型') && t.includes('Attention Deficit Disorders'))
+// 账本里的模型建议：来自导出的旁路文件，标明不计票；不进「这篇现在被说成什么」，点一下只填输入框
+const ledger = page.locator('.ledger-suggestions')
+const ledgerText = await ledger.innerText()
+check('fixture work: ledger model suggestions shown as not counted', t.includes('模型建议 · 不计票') && ledgerText.includes('fixture-tagger') && ledgerText.includes('r1-abc') && ledgerText.includes('不计票') && ledgerText.includes('Neurofeedback') && ledgerText.includes('90%') && ledgerText.includes('Twin study'), ledgerText.replace(/\n/g, ' | '))
+const saidBefore = await page.locator('ul.said').first().innerText()
+check('fixture work: model suggestions are not statements', !saidBefore.includes('Neurofeedback') && !saidBefore.includes('Twin study') && (await page.locator('ul.newtags li').count()) === 0)
+await ledger.locator('button.chip.model:has-text("Neurofeedback")').click()
+await sleep(100)
+check('fixture work: clicking a model suggestion only fills the box', (await page.locator('input[data-focus="newtag"]').inputValue()) === 'Neurofeedback' && (await page.locator('ul.newtags li').count()) === 0 && (await page.locator('ul.said').first().innerText()) === saidBefore)
+await page.fill('input[data-focus="newtag"]', '')
+await shot('07a-work-model-suggestions.png')
 // 盲复录
 await page.click('ul.said button:has-text("复录")')
 await sleep(100)
@@ -212,8 +237,56 @@ await shot('07-work-fixture.png')
 await page.goto(`${url.fixture}/#/t/adhd`)
 await sleep(300)
 t = await text()
-check('tag page', t.includes('标签「ADHD」') && t.includes('2 篇作品') && t.includes('现在能画到') && t.includes('frame'), t.match(/这批作品能画到哪一级[\s\S]{0,300}/)?.[0]?.replace(/\n/g, ' | '))
+check('tag page', t.includes('标签「ADHD」') && t.includes('3 篇作品') && t.includes('现在能画到') && t.includes('frame'), t.match(/这批作品能画到哪一级[\s\S]{0,300}/)?.[0]?.replace(/\n/g, ' | '))
 await shot('08-tag.png')
+
+// 真实导出（本仓账本经 pnpm export 出来的那一份）：旁路文件里的第一篇，作品页上要看得到它的模型建议
+{
+  const real = join(dist, 'export', 'v1')
+  const index = existsSync(join(real, 'suggestions.json')) ? JSON.parse(readFileSync(join(real, 'suggestions.json'), 'utf8')) : null
+  check('real export: suggestions.json present', index !== null && Array.isArray(index.shards))
+  // 本仓的账本里一直有模型建议（样本脚本与贡献包）：这里为空就是导出坏了，不许悄悄跳过
+  check('real export: has model suggestions', !!index && index.shards.length > 0 && index.counts.suggestions > 0)
+  if (index && index.shards.length > 0) {
+    const first = JSON.parse(readFileSync(join(real, index.shards[0].path), 'utf8').split('\n')[0])
+    const realRoot = await serve(dist)
+    servers.real = realRoot
+    await page.goto(`${realRoot.url}/#/w/${encodeURIComponent(first.work_id)}`)
+    await page.waitForSelector('.ledger-suggestions button.chip.model')
+    await sleep(400)
+    const lt = await page.locator('.ledger-suggestions').innerText()
+    // 这一篇的名片也要读得到：线上多数分片只有一行，整片恰好是一个合法的 JSON 对象，不能被当成「不是数组」丢掉
+    const manifest = JSON.parse(readFileSync(join(real, 'manifest.json'), 'utf8'))
+    const single = manifest.shards.find((sh) => sh.works === 1)
+    const exported = manifest.shards.flatMap((sh) => readFileSync(join(real, sh.path), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)))
+    const mine = exported.find((w) => w.work_id === first.work_id)
+    if (mine?.card?.title) check('real export: card of that work is loaded', (await text()).includes(mine.card.title.slice(0, 40)), mine.card.title.slice(0, 60))
+    if (single) {
+      const lone = JSON.parse(readFileSync(join(real, single.path), 'utf8').split('\n')[0])
+      await page.goto(`${realRoot.url}/#/w/${encodeURIComponent(lone.work_id)}`)
+      await sleep(400)
+      check('real export: a single-line shard is read as one work', !!lone.card?.title && (await text()).includes(lone.card.title.slice(0, 40)) && !(await text()).includes('没有名片'), single.path)
+    }
+    check('real export: work page shows ledger model suggestions', first.models.every((mo) => lt.includes(mo.id)) && lt.includes(first.models[0].tags[0].label) && lt.includes('不计票'), `${first.work_id} · ${first.models.map((mo) => mo.id).join(', ')}`)
+  }
+}
+// 旁路文件这次没取成（服务器错误）：如实说没取到，不说成「没有」
+const beforeInjected = consoleErrors.length
+await page.route('**/suggestions/*.jsonl', (route) => route.fulfill({ status: 500, body: 'boom' }))
+await page.goto(`${url.fixture}/#/w/doi%3A10.1234%2Ffixture-b`)
+await sleep(400)
+const failedText = await page.locator('.ledger-suggestions').innerText()
+check('suggestions fetch failure is not shown as none', failedText.includes('没取到') && !failedText.includes('没有给这篇'), failedText)
+await page.unroute('**/suggestions/*.jsonl')
+// 这一步的 500 是故意注入的：只把它造成的「资源加载失败」从控制台记录里拿掉，别的错误照样算
+{
+  const injected = consoleErrors.splice(beforeInjected)
+  consoleErrors.push(...injected.filter((e) => !/Failed to load resource.*500/.test(e)))
+}
+// 没有旁路文件的根：如实说没有，不报错
+await page.goto(`${url.empty}/#/w/doi%3A10.1000%2Fxyz123`)
+await sleep(300)
+check('work without suggestions says none', (await page.locator('.ledger-suggestions').innerText()).includes('账本里没有给这篇的模型建议'))
 
 // 3 无导出
 const errsBefore = consoleErrors.length

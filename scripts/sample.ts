@@ -21,12 +21,19 @@ export const MAX_KEYWORDS = 5
 /** 名片的作品键：优先 DOI，其次 OpenAlex 编号 */
 export const workKeyOfCard = (c: EvidenceWorkCard): string | null => (c.doi ? `doi:${c.doi}` : c.id ? c.id : null)
 
-/** 一张名片 → 快照 + 模型建议断言（纯函数） */
-export function sampleOf(card: EvidenceWorkCard, topic: { id: string; name: string }, at: string, modelVersion: string): { snapshot: WorkSnapshot; assertions: EvidenceAnnotation[] } | null {
+/** 一张名片 → 名片快照（摘要置空；别名是它的其他键）。没有可用的作品键 ⇒ null */
+export function snapshotOf(card: EvidenceWorkCard, at: string): WorkSnapshot | null {
   const workId = workKeyOfCard(card)
   if (!workId) return null
   const aliases = [card.id, card.doi ? `doi:${card.doi}` : null, card.pmid ? `pmid:${card.pmid}` : null].filter((k): k is string => !!k && k !== workId)
-  const snapshot: WorkSnapshot = { work_id: workId, aliases: [...new Set(aliases)].sort(), card: { ...card, abstract: null }, snapshot_at: at, snapshot_source: 'openalex' }
+  return { work_id: workId, aliases: [...new Set(aliases)].sort(), card: { ...card, abstract: null }, snapshot_at: at, snapshot_source: 'openalex' }
+}
+
+/** 一张名片 → 快照 + 模型建议断言（纯函数） */
+export function sampleOf(card: EvidenceWorkCard, topic: { id: string; name: string }, at: string, modelVersion: string): { snapshot: WorkSnapshot; assertions: EvidenceAnnotation[] } | null {
+  const snapshot = snapshotOf(card, at)
+  if (!snapshot) return null
+  const workId = snapshot.work_id
   const assertions: EvidenceAnnotation[] = []
   const suggest = (modelId: string, tag: string, note: string) => {
     const key = normalizeTag(tag)

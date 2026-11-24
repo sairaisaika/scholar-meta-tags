@@ -17,6 +17,7 @@
     "check": "tsx scripts/check.ts",
     "redact": "tsx scripts/redact.ts",
     "bulk": "tsx scripts/import.ts",
+    "tag": "tsx scripts/tag.ts",
     "evaluate": "tsx scripts/evaluate.ts",
     "test": "node --import tsx --test scripts/*.test.ts",
     "typecheck": "tsc -p tsconfig.json",
@@ -26,7 +27,7 @@
   },
   "dependencies": {
     "pdfjs-dist": "^4.10.38",
-    "scholar-meta": "https://github.com/sairaisaika/scholar-meta-visulization/releases/download/v0.6.2/scholar-meta-0.6.2.tgz"
+    "scholar-meta": "https://github.com/sairaisaika/scholar-meta-visulization/releases/download/v0.6.3/scholar-meta-0.6.3.tgz"
   },
   "devDependencies": {
     "@types/node": "^20",

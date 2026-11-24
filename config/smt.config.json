@@ -1,10 +1,11 @@
 {
-  "_comment": "裁决与防滥用参数。改这里走 PR；导出时随 manifest.policy 下发，宿主据此复算。",
+  "_comment": "裁决与防滥用参数。改这里走 PR；导出时随 manifest.policy 下发，宿主据此复算。store.max_part_mb 是一个断言文件的上限（MB）：满了接着写下一片；定得小（2 MB）是为了让分片在现在的数据量下就真的发生、被每次检查走到，文件小也好合并。",
   "quorum": { "tier": "contributor", "threshold": 0.5, "confidence": 0.8, "min_independent": 2, "min_disputers": 2 },
   "row": { "require_re_extraction": true, "tolerance": { "relative": 0.005, "absolute": 0.005 } },
   "min_tier": { "binding": "editor", "independence": "editor", "appraisal": "editor" },
   "model_min_confidence": 0.5,
   "abuse": { "min_account_age_days": 7, "daily_issue_limit": 20, "daily_assertion_limit": 200, "max_assertions_per_issue": 60, "max_rows_per_work": 20, "max_quote_chars": 300 },
   "queue": { "stale_days": 30 },
-  "export": { "label": "Community annotations (scholar-meta-tags)", "shard_bits": 8 }
+  "export": { "label": "Community annotations (scholar-meta-tags)", "shard_bits": 8 },
+  "store": { "max_part_mb": 2 }
 }

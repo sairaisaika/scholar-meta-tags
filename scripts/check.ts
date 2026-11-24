@@ -3,7 +3,9 @@
  *   · 词表：概念 id 唯一、`broader` 无环且深度 ≤ 3、被引概念存在、`deprecated` 必带 `replaced_by`、`facets.design.values` 与引擎 `EVIDENCE_STUDY_DESIGNS` 完全相同；
  *   · JSONL 每行可解析且是对象；断言的 `by.id` 形如 `gh:\d+`、`redacted:<12 hex>` 或模型 id；
  *   · 不存邮箱（正则 `[\w.+-]+@[\w-]+\.[\w.]+` 扫 data/ vocab/ config/ imports/ 与导出）；文件 < 50 MB；名片 `abstract === null`；
- *   · `--export <dir>`：用引擎 `readCommunityExport` 读回并要求 issues 为空，另核对每个分片的 sha256 与字节数。
+ *   · `--export <dir>`：用引擎 `readCommunityExport` 读回并要求 issues 为空，另核对每个分片的 sha256 与字节数；
+ *     模型建议旁路文件（`suggestions.json` 与各片）的哈希、条数，并与账本里的模型标签断言对账。
+ *   · 受控词表 `vocab/tags.json`：键已归一、显示名归一后等于键、同一个写法不指向两个标签。
  *   · 标准答案 `data/gold/*.jsonl`：作品键、标签数组（每个都能归一）、可选的研究设计（引擎词表内）、`by` 是账号 id；
  *   · `--append-only <git 引用>`：只追加闸——那个提交里的每个断言文件，现在的内容必须以它为字节前缀、文件不能消失。
  *     唯一例外是抹名：同一范围内 `data/REDACTIONS.md` 有新增内容时，允许某行只把 `by.id` 从 `gh:<数字>` 换成 `redacted:<12 hex>`。
@@ -16,8 +18,8 @@ import { join, relative, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { EVIDENCE_STUDY_DESIGNS, EVIDENCE_TRUST_TIERS, normalizeTag, readCommunityExport } from 'scholar-meta'
 import type { EvidenceAnnotation, EvidenceConcept } from 'scholar-meta'
-import { REPO_ROOT, listFiles, loadVocab, paths, readJsonl, sha256 } from './lib/store.js'
-import type { GoldRow, WorkSnapshot } from './lib/store.js'
+import { REPO_ROOT, listFiles, loadAssertions, loadBlocklist, loadVocab, loadWorks, paths, readJsonl, sha256 } from './lib/store.js'
+import type { GoldRow, Vocab, WorkSnapshot } from './lib/store.js'
 import { argValue } from './export.js'
 
 export const EMAIL = /[\w.+-]+@[\w-]+\.[\w.]+/
@@ -187,13 +189,33 @@ export function checkAppendOnly(root: string, base: string, git: GitRead = realG
   return { compared: true, files: files.length, problems }
 }
 
+/** 词表自身的问题：键必须已归一、显示名归一后等于键、别名能归一、同一个写法不能指向两个标签 */
+export function checkTagVocabulary(tags: Vocab['tags']): Problem[] {
+  const out: Problem[] = []
+  const owner = new Map<string, string>()
+  for (const [key, v] of Object.entries(tags.tags)) {
+    const where = `vocab/tags.json:${key}`
+    if (normalizeTag(key) !== key) out.push({ where, what: 'tag key is not in normalised form' })
+    if (!v || typeof v.label !== 'string' || normalizeTag(v.label) !== key) { out.push({ where, what: 'label must normalise to the tag key' }); continue }
+    if (!Array.isArray(v.aliases)) { out.push({ where, what: 'aliases must be an array' }); continue }
+    for (const raw of [key, ...v.aliases]) {
+      const k = typeof raw === 'string' ? normalizeTag(raw) : null
+      if (!k) { out.push({ where, what: `alias cannot be normalised: ${String(raw)}` }); continue }
+      const prev = owner.get(k)
+      if (prev && prev !== key) out.push({ where, what: `"${k}" is also a spelling of "${prev}"` })
+      owner.set(k, key)
+    }
+  }
+  return out
+}
+
 /** 全仓检查（data / vocab / config） */
 export function checkRepo(root: string = REPO_ROOT): Problem[] {
   const out: Problem[] = []
   const p = paths(root)
   const rel = (f: string) => relative(root, f)
   const vocab = loadVocab(root)
-  out.push(...checkFacets(vocab.facets), ...checkConcepts(vocab.concepts))
+  out.push(...checkFacets(vocab.facets), ...checkConcepts(vocab.concepts), ...checkTagVocabulary(vocab.tags))
 
   const dataFiles = [...listFiles(join(root, 'data')), ...listFiles(join(root, 'vocab')), ...listFiles(join(root, 'config')), ...listFiles(join(root, 'imports'))]
   for (const f of dataFiles) {
@@ -220,8 +242,73 @@ export function checkRepo(root: string = REPO_ROOT): Problem[] {
   return out
 }
 
-/** 导出目录：读回零问题 + 分片哈希对得上 */
-export function checkExport(dir: string): Problem[] {
+/**
+ * 模型建议旁路文件：`suggestions.json` 列的每一片都在、哈希与条数对得上、目录里没有多余的片；
+ * 给了仓根就再与账本对账——旁路文件里的建议条数必须等于账本里（模型, 作品, 标签键）的个数（这里另数一遍，不复用导出的代码）。
+ */
+export function checkSuggestions(dir: string, root?: string): Problem[] {
+  const out: Problem[] = []
+  const indexFile = join(dir, 'suggestions.json')
+  if (!existsSync(indexFile)) return [{ where: 'suggestions.json', what: 'missing (the export always writes it, even when empty)' }]
+  let index: { counts?: { works?: number; suggestions?: number }; shards?: Array<{ path: string; works: number; suggestions: number; sha256: string }> }
+  try { index = JSON.parse(readFileSync(indexFile, 'utf8')) } catch { return [{ where: 'suggestions.json', what: 'not JSON' }] }
+  const listed = new Set<string>()
+  let works = 0
+  let suggestions = 0
+  for (const s of index.shards ?? []) {
+    listed.add(s.path)
+    const file = join(dir, s.path)
+    if (!/^suggestions\/[0-9a-f]+\.jsonl$/.test(s.path) || !existsSync(file)) { out.push({ where: s.path, what: 'suggestion shard listed in suggestions.json is missing' }); continue }
+    const bytes = readFileSync(file)
+    if (sha256(bytes) !== s.sha256) out.push({ where: s.path, what: 'sha256 does not match suggestions.json' })
+    const r = readJsonl<{ work_id?: unknown; models?: unknown }>(file)
+    for (const b of r.bad) out.push({ where: `${s.path}:${b.line}`, what: `unparsable JSONL line (${b.error})` })
+    let n = 0
+    for (const row of r.rows) {
+      const models = Array.isArray(row.value?.models) ? (row.value.models as Array<{ id?: unknown; tags?: unknown }>) : null
+      if (typeof row.value?.work_id !== 'string' || !models || models.some((m) => typeof m?.id !== 'string' || !Array.isArray(m.tags))) { out.push({ where: `${s.path}:${row.line}`, what: 'bad suggestion row' }); continue }
+      for (const m of models) n += (m.tags as unknown[]).length
+    }
+    if (r.rows.length !== s.works) out.push({ where: s.path, what: `works ${r.rows.length} ≠ suggestions.json ${s.works}` })
+    if (n !== s.suggestions) out.push({ where: s.path, what: `suggestions ${n} ≠ suggestions.json ${s.suggestions}` })
+    works += r.rows.length
+    suggestions += n
+  }
+  for (const f of listFiles(join(dir, 'suggestions'))) {
+    const rel = `suggestions/${relative(join(dir, 'suggestions'), f).split('\\').join('/')}`
+    if (!listed.has(rel)) out.push({ where: rel, what: 'file is not listed in suggestions.json' })
+  }
+  if (works !== index.counts?.works) out.push({ where: 'suggestions.json', what: `counts.works ${index.counts?.works} ≠ ${works} rows in shards` })
+  if (suggestions !== index.counts?.suggestions) out.push({ where: 'suggestions.json', what: `counts.suggestions ${index.counts?.suggestions} ≠ ${suggestions} in shards` })
+  if (root) {
+    // 另数一遍「当前生效的模型建议」：每个（模型, 作品）上，贡献包的行只算最后写进来的那一组（版本与回答指纹相同的），其他来源的行都算；数不同的标签键
+    const blocked = new Set(loadBlocklist(root))
+    const alias = new Map<string, string>()
+    const snapshots = [...loadWorks(root).values()]
+    for (const w of snapshots) alias.set(w.work_id, w.work_id)
+    for (const w of snapshots) for (const k of w.aliases) if (!alias.has(k)) alias.set(k, w.work_id)
+    const groups = new Map<string, EvidenceAnnotation[]>()
+    for (const a of loadAssertions(root).assertions) {
+      if (a.by?.kind !== 'model' || a.kind !== 'tag' || a.op !== 'add' || a.payload?.kind !== 'tag' || !a.subject.startsWith('tag:') || blocked.has(a.by.id)) continue
+      const g = `${a.by.id}\u0000${alias.get(a.work_id) ?? a.work_id}`
+      groups.set(g, [...(groups.get(g) ?? []), a])
+    }
+    let expected = 0
+    const answer = (a: EvidenceAnnotation) => /(?:^|;)answer=([0-9a-f]{12})(?:;|$)/.exec(a.note ?? '')?.[1] ?? null
+    for (const list of groups.values()) {
+      const imported = list.filter((a) => a.source?.form === 'import/1')
+      // loadAssertions 已按时间与 id 排好序：最后一条就是最后写进来的那一组的成员
+      const last = imported[imported.length - 1]
+      const current = (a: EvidenceAnnotation) => !!last && (a.by.model_version ?? null) === (last.by.model_version ?? null) && answer(a) === answer(last)
+      expected += new Set(list.filter((a) => a.source?.form !== 'import/1' || current(a)).map((a) => a.subject)).size
+    }
+    if (expected !== suggestions) out.push({ where: 'suggestions.json', what: `ledger has ${expected} current model tag suggestions, the export shows ${suggestions}` })
+  }
+  return out
+}
+
+/** 导出目录：读回零问题 + 分片哈希对得上 + 模型建议旁路文件对得上（给了仓根就与账本对账） */
+export function checkExport(dir: string, root?: string): Problem[] {
   const out: Problem[] = []
   const manifestFile = join(dir, 'manifest.json')
   if (!existsSync(manifestFile)) return [{ where: dir, what: 'manifest.json missing' }]
@@ -242,6 +329,7 @@ export function checkExport(dir: string): Problem[] {
   const read = readCommunityExport(manifest, shards, { bindings: extra('bindings.json'), concepts: extra('concepts.json'), frames: extra('frames.json') })
   for (const i of read.issues) out.push({ where: `export:${i.path}`, what: i.code })
   if (!read.ok) out.push({ where: 'export', what: 'readCommunityExport refused the manifest' })
+  out.push(...checkSuggestions(dir, root))
   for (const f of listFiles(dir)) {
     if (findEmail(readFileSync(f, 'utf8'))) out.push({ where: relative(dir, f), what: 'looks like an email address' })
   }
@@ -252,7 +340,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
   const root = argValue(argv, '--root') ? resolve(argValue(argv, '--root')!) : REPO_ROOT
   const problems = checkRepo(root)
   const exportDir = argValue(argv, '--export')
-  if (exportDir) problems.push(...checkExport(resolve(root, exportDir)))
+  if (exportDir) problems.push(...checkExport(resolve(root, exportDir), root))
   const base = argValue(argv, '--append-only')
   let appendNote = ''
   if (base !== undefined && base !== null) {

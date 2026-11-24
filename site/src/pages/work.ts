@@ -1,6 +1,6 @@
 /**
  * 作品页 `#/w/<work_key>`：左名片（presentWorkCard）、右「这篇现在被说成什么」（presentCommunityWork）、
- * 模型建议区（灰底、不预选）、三个问题一屏 + 折叠数字卡 + 折叠人群 / 场景分面、实时验形（intakeOutcomeRows）、
+ * 模型建议区（灰底、不预选：账本里的模型建议标明「不计票」，另列外部源的分类）、三个问题一屏 + 折叠数字卡 + 折叠人群 / 场景分面、实时验形（intakeOutcomeRows）、
  * 预览（describeLadderGap / previewFrameChange）、提交（预填 issue）、盲复录（matchReExtraction）。
  * 表单只建一次；派生面板（检查 / 预览 / 提交）按输入实时重算。草稿按作品键留在内存里，切语言不丢。
  */
@@ -12,7 +12,7 @@ import {
   type EvidenceRecord, type EvidenceWorkCard, type EvidenceWorkRef, type SynthesisContext,
 } from 'scholar-meta'
 import { type App, openalex } from '../app.js'
-import { findWork, scopeByTags, tagKeysOf, tagKeysOfRecord, vocab, vocabConcepts } from '../data.js'
+import { config, findWork, loadSuggestions, scopeByTags, tagKeysOf, tagKeysOfRecord, vocab, vocabConcepts } from '../data.js'
 import { button, field, h, input, radios, select, set, textarea } from '../dom.js'
 import {
   ROW_KINDS, buildItems, effectOf, emptyDraft, emptyReExtract, formIssues, issueLink, kindForMetric, nextRowId, previewRow, summaryOf,
@@ -254,8 +254,25 @@ export function workPage(app: App, key: string): HTMLElement {
     const seen = new Set<string>()
     const chips = items.filter((x) => { const k = normalizeTag(x); if (!k || seen.has(k)) return false; seen.add(k); return true })
       .map((x) => button(x, () => { newTagBox.value = x; newTagBox.dispatchEvent(new Event('input')); newTagBox.focus() }, { class: 'chip model' }))
+    // 账本里的模型建议（导出的旁路文件）：异步取这一篇所在的那一片；标明「不计票」，点一下只填输入框
+    const ledger = h('div', { class: 'ledger-suggestions', 'aria-live': 'polite' }, [h('p', { class: 'muted' }, ['…'])])
+    void loadSuggestions(config.exportPath, workId).then((state) => {
+      if (state.status === 'failed') { ledger.replaceChildren(h('p', { class: 'warn' }, [t.modelLedgerFailed])); return }
+      const models = state.models
+      if (models.length === 0) { ledger.replaceChildren(h('p', { class: 'muted' }, [t.modelLedgerNone])); return }
+      ledger.replaceChildren(...models.flatMap((mo) => [
+        h('p', { class: 'hint model-line' }, [fmt(t.modelLedgerLine, { id: mo.id, version: mo.version ? fmt(t.modelLedgerVersion, { v: mo.version }) : '', n: mo.tags.length })]),
+        h('p', { class: 'chips' }, mo.tags.map((x) => {
+          const b = button(x.label, () => { newTagBox.value = x.label; newTagBox.dispatchEvent(new Event('input')); newTagBox.focus() }, { class: 'chip model', 'data-model': mo.id })
+          if (x.confidence !== null) b.append(' ', h('small', { class: 'state' }, [`${Math.round(x.confidence * 100)}%`]))
+          return b
+        })),
+      ]))
+    })
     return h('section', { class: 'card model' }, [
-      h('h3', {}, [t.modelTitle]), h('p', { class: 'hint' }, [t.modelHint]),
+      h('h3', {}, [t.modelTitle]),
+      h('h4', {}, [t.modelLedgerTitle]), h('p', { class: 'hint' }, [t.modelLedgerHint]), ledger,
+      h('h4', {}, [t.modelExternalTitle]), h('p', { class: 'hint' }, [t.modelHint]),
       chips.length ? h('p', { class: 'chips' }, chips) : h('p', { class: 'muted' }, [t.modelNone]),
     ])
   }

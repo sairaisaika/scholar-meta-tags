@@ -4,7 +4,7 @@
  * 裁决 `resolveAnnotations` → 按作品分组 → 行 `reconcileRows`（竞争值 / 互为复录）→ 概念 `resolveConcepts` 写进 `rows[].concept_ids`
  * → `EvidenceCommunityWork`：`tags` 只放映射后有账本立场的（`communityStateToWorkTagState`，带 `quorum`），pending 的标签单列；
  * → 分片 `works/<hh>.jsonl`（sha256 真算）→ `frames.json`（`createCommunityPorts(exp).records()` → `buildSynthesisTable` → `summarizeFrames`）
- * → `bindings.json` / `concepts.json` / `queues.json` / `manifest.json`。
+ * → `bindings.json` / `concepts.json` / `queues.json` / `manifest.json`；另出模型建议旁路文件 `suggestions/<hh>.jsonl` 与 `suggestions.json`（`buildSuggestions`）。
  * 除 `generated_at` 与 `source_commit` 外全部由数据决定：同一批断言重放出同一批字节（replay 据此比对）。
  */
 import {
@@ -45,7 +45,22 @@ export interface ExportFiles {
   queues: Queues
   /** 装好的导出（与写出的文件同内容），方便自检 */
   export: EvidenceCommunityExport
+  /** 模型建议旁路文件（不在引擎契约里；宿主的读取函数不读） */
+  suggestions: SuggestionFiles
 }
+
+/** 一篇作品的模型建议：只收模型层当前生效的标签建议。模型层永不计票，这里只是把它们按作品摆出来给标注页看 */
+export interface SuggestionRow {
+  work_id: string
+  models: Array<{ id: string; version: string | null; tags: Array<{ tag_key: string; label: string; confidence: number | null }> }>
+}
+export interface SuggestionIndex {
+  /** `models`：模型 id → 建议条数 */
+  counts: { works: number; suggestions: number; models: Record<string, number> }
+  shards: Array<{ path: string; works: number; suggestions: number; sha256: string }>
+}
+export interface SuggestionFiles { shards: Map<string, SuggestionRow[]>; index: SuggestionIndex }
+
 
 /** 任务板。`stale_pending` 按导出时刻算，是唯一随时间变的部分（replay 比对时跳过它）。 */
 export interface Queues {
@@ -60,7 +75,103 @@ export interface Queues {
 const later = (a: EvidenceAnnotation, b: EvidenceAnnotation) => a.at > b.at || (a.at === b.at && a.id > b.id)
 export const shardPath = (workId: string) => `works/${workShard(workId)}.jsonl`
 export const serializeShard = (works: readonly EvidenceCommunityWork[]) => works.map((w) => JSON.stringify(w)).join('\n') + (works.length > 0 ? '\n' : '')
+
 export const recordIdOf = (workId: string, rowId: string) => `community:${workId}/${rowId}`
+
+export const suggestionPath = (workId: string) => `suggestions/${workShard(workId)}.jsonl`
+export const serializeSuggestions = (rows: readonly SuggestionRow[]) => rows.map((r) => JSON.stringify(r)).join('\n') + (rows.length > 0 ? '\n' : '')
+/** 贡献包入库时把置信度记在 note 里（`import:<文件>;confidence=<x>`）；没有 ⇒ null */
+export const confidenceOfNote = (note: string | null | undefined): number | null => {
+  const m = /(?:^|;)confidence=([0-9]*\.?[0-9]+)(?:;|$)/.exec(note ?? '')
+  const n = m ? Number(m[1]) : NaN
+  return Number.isFinite(n) && n >= 0 && n <= 1 ? n : null
+}
+
+/** 贡献包写成的断言的来源标记（`source.form`） */
+export const IMPORT_FORM = 'import/1'
+
+export interface ModelTagSet { version: string | null; tags: Map<string, EvidenceAnnotation> }
+
+/** 贡献包入库时记在 note 里的「回答指纹」（`…;answer=<12 位十六进制>`）：同一个包条目写出来的各行带同一个指纹 */
+export const answerOfNote = (note: string | null | undefined): string | null => /(?:^|;)answer=([0-9a-f]{12})(?:;|$)/.exec(note ?? '')?.[1] ?? null
+
+/**
+ * 每篇作品、每个模型**当前生效**的标签建议（作品 → 模型 → 那一组）。导出的旁路文件与质量评估都用它。
+ *   · 贡献包的一条是模型对这一篇的完整回答，入库时整组写进来、各行带同一个（版本, 回答指纹）。同一个模型在同一篇上
+ *     只有**最后写进来的那一组**生效——新回答不再给的标签随之退场。入库保证最后写进来的就是 `imports/` 里现在的那一份
+ *     （见 import.ts）。模型对某篇不再回答时，旧的那组仍然留着（模型不能撤回）。
+ *   · 其他来源（样本脚本）的「版本」只是运行日期，逐个标签键累积。
+ *   · 同一个标签键留最新一条；这一组的版本取其中最新一条断言的版本。`canon` 把作品键换成同一个（别名 → 导出里的键）。
+ */
+export function currentModelTags(
+  assertions: readonly EvidenceAnnotation[], opts: { blocklist?: readonly string[]; canon?: (workId: string) => string } = {},
+): Map<string, Map<string, ModelTagSet>> {
+  const blocked = new Set(opts.blocklist ?? [])
+  const canon = opts.canon ?? ((k: string) => k)
+  const rows = new Map<string, Map<string, EvidenceAnnotation[]>>()
+  for (const a of assertions) {
+    if (!a || a.by?.kind !== 'model' || a.kind !== 'tag' || a.op !== 'add' || a.payload?.kind !== 'tag' || !a.subject.startsWith('tag:') || blocked.has(a.by.id)) continue
+    const work = canon(a.work_id)
+    let models = rows.get(work)
+    if (!models) { models = new Map(); rows.set(work, models) }
+    const list = models.get(a.by.id)
+    if (list) list.push(a)
+    else models.set(a.by.id, [a])
+  }
+  const newestOf = (list: readonly EvidenceAnnotation[]) => list.reduce((x, y) => (later(y, x) ? y : x))
+  const out = new Map<string, Map<string, ModelTagSet>>()
+  for (const [work, models] of rows) {
+    const sets = new Map<string, ModelTagSet>()
+    for (const [model, list] of models) {
+      const imported = list.filter((a) => a.source?.form === IMPORT_FORM)
+      const newest = imported.length > 0 ? newestOf(imported) : null
+      const inGroup = (a: EvidenceAnnotation) => newest !== null && (a.by.model_version ?? null) === (newest.by.model_version ?? null) && answerOfNote(a.note) === answerOfNote(newest.note)
+      const kept = list.filter((a) => a.source?.form !== IMPORT_FORM || inGroup(a))
+      const tags = new Map<string, EvidenceAnnotation>()
+      for (const a of kept) {
+        const key = a.subject.slice(4)
+        const prev = tags.get(key)
+        if (!prev || later(a, prev)) tags.set(key, a)
+      }
+      sets.set(model, { version: newestOf(kept).by.model_version ?? null, tags })
+    }
+    out.set(work, sets)
+  }
+  return out
+}
+
+/** 作品键的别名表：名片快照的别名 → 它的作品键 */
+export function workCanon(works: ReadonlyMap<string, WorkSnapshot>): (workId: string) => string {
+  const alias = new Map<string, string>()
+  for (const w of works.values()) { alias.set(w.work_id, w.work_id) }
+  for (const w of works.values()) for (const a of w.aliases) if (!alias.has(a)) alias.set(a, w.work_id)
+  return (k) => alias.get(k) ?? k
+}
+
+/**
+ * 模型建议旁路文件：当前生效的模型标签建议（`currentModelTags`）→ 按作品分片（与作品分片同一种分法）。
+ * 全部由断言与名片的别名决定，重放可逐字节比对。
+ */
+export function buildSuggestions(assertions: readonly EvidenceAnnotation[], opts: { blocklist?: readonly string[]; canon?: (workId: string) => string } = {}): SuggestionFiles {
+  const current = currentModelTags(assertions, opts)
+  const shards = new Map<string, SuggestionRow[]>()
+  const perModel: Record<string, number> = {}
+  let total = 0
+  for (const workId of [...current.keys()].sort()) {
+    const models = [...current.get(workId)!.entries()].sort(([a], [b]) => (a < b ? -1 : 1)).map(([id, set]) => {
+      const list = [...set.tags.entries()].sort(([a], [b]) => (a < b ? -1 : 1))
+      perModel[id] = (perModel[id] ?? 0) + list.length
+      total += list.length
+      return { id, version: set.version, tags: list.map(([tag_key, a]) => ({ tag_key, label: a.payload.kind === 'tag' ? a.payload.tag : tag_key, confidence: confidenceOfNote(a.note) })) }
+    })
+    const path = suggestionPath(workId)
+    shards.set(path, [...(shards.get(path) ?? []), { work_id: workId, models }])
+  }
+  const meta = [...shards.entries()].sort(([a], [b]) => (a < b ? -1 : 1)).map(([path, rows]) => ({
+    path, works: rows.length, suggestions: rows.reduce((n, r) => n + r.models.reduce((k, m) => k + m.tags.length, 0), 0), sha256: sha256(Buffer.from(serializeSuggestions(rows), 'utf8')),
+  }))
+  return { shards, index: { counts: { works: current.size, suggestions: total, models: Object.fromEntries(Object.entries(perModel).sort(([a], [b]) => (a < b ? -1 : 1))) }, shards: meta } }
+}
 
 export function buildExport(input: ExportInput): ExportFiles {
   const blocked = new Set(input.blocklist)
@@ -216,5 +327,5 @@ export function buildExport(input: ExportInput): ExportFiles {
       .map((d) => ({ work_id: d.work_id, subject: d.subject, since: d.last_changed })),
   }
 
-  return { manifest, shards, frames, bindings, concepts, queues, export: { manifest, works, bindings, concepts, frames } }
+  return { manifest, shards, frames, bindings, concepts, queues, export: { manifest, works, bindings, concepts, frames }, suggestions: buildSuggestions(input.assertions, { blocklist: input.blocklist, canon: workCanon(input.works) }) }
 }
