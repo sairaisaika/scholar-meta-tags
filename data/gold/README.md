@@ -9,7 +9,7 @@
 ```
 
 - `work_id`：`doi:` / `openalex:` / `pmid:` 开头的作品键。
-- `tags`：这篇**应该有**的标签。写空数组 `[]` 表示「看过了，这些标签都不该有」——这篇上的任何模型建议都算多给的。没列进来的作品不参与评估。
+- `tags`：这篇**应该有**的标签，词表里有的概念用 `vocab/tags.json` 里的显示名写——评估按规范化后的标签键逐个比，不认同义词，写成别的说法会同时记一次漏给和一次多给。写空数组 `[]` 表示「看过了，这些标签都不该有」——这篇上的任何模型建议都算多给的。没列进来的作品不参与评估。
 - `design`：可选，研究设计，取值是引擎词表里的（与 `vocab/facets.json` 的 design 相同）。
 - `by`：标注人的 GitHub 数字 id（`gh:<数字>`），不写登录名、不写邮箱。
 - `at`：标注时间。同一篇出现多行时，最新一行生效（改主意就追加一行，不改旧行）。
@@ -23,5 +23,5 @@
 ---
 
 Human reference labels for evaluating model suggestions; currently empty, in which case the quality table says so instead of showing zero.
-One JSON object per line: `work_id`, `tags` (an empty array means "none of them apply"), optional `design`, `by` (`gh:<numeric id>`), `at`.
+One JSON object per line: `work_id`, `tags` (use the display names in `vocab/tags.json` for concepts the vocabulary has — synonyms are not matched; an empty array means "none of them apply"), optional `design`, `by` (`gh:<numeric id>`), `at`.
 The latest line per work wins. Run `pnpm evaluate`; the same result is published as `quality.json` next to the export, including `consensus` (community decisions against the same reference labels). Reference labels must be written by people.
