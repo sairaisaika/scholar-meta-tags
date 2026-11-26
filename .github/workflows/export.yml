@@ -32,7 +32,7 @@ jobs:
       enabled: ${{ steps.pages.outputs.enabled }}
     steps:
       # 被入库 / 贡献包工作流调用时，它们刚推了新提交；这里取分支最新，不取触发时的那个提交
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.ref_name }}
       - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
