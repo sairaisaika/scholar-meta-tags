@@ -27,14 +27,14 @@
     "site:live": "node site/test/live.mjs"
   },
   "dependencies": {
-    "pdfjs-dist": "^4.10.38",
+    "pdfjs-dist": "^6.5.438",
     "scholar-meta": "https://github.com/sairaisaika/scholar-meta-visulization/releases/download/v0.6.3/scholar-meta-0.6.3.tgz"
   },
   "devDependencies": {
-    "@types/node": "^20",
-    "esbuild": "^0.25.0",
-    "playwright": "1.63.0",
+    "@types/node": "^26",
+    "esbuild": "^0.28.2",
+    "playwright": "1.65.1",
     "tsx": "^4.19.0",
-    "typescript": "^5"
+    "typescript": "^7"
   }
 }
